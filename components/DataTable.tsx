@@ -41,14 +41,8 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
   const [currentPage, setCurrentPage] = useState(1);
   const [processedData, setProcessedData] = useState<Advertiser[]>([]);
   const [epcPeriod, setEpcPeriod] = useState<EPCPeriod>(7);
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [epcTrendFilter, setEpcTrendFilter] = useState<'all' | 'up' | 'down'>('all');
   const itemsPerPage = 20;
-
-  // 获取今天的日期作为默认值
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setSelectedDate(today);
-  }, []);
 
   // 处理数据，直接使用数据库返回的真实数据
   useEffect(() => {
@@ -59,10 +53,42 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
     }
   }, [data]);
 
+  // 检查EPC趋势
+  const checkEpcTrend = (epcHistory: number[]): 'up' | 'down' | 'flat' => {
+    if (!epcHistory || epcHistory.length < 2) return 'flat';
+    
+    const validData = epcHistory.filter(epc => epc > 0);
+    if (validData.length < 2) return 'flat';
+    
+    const first = validData[0];
+    const last = validData[validData.length - 1];
+    
+    if (last > first * 1.05) return 'up'; // 上升超过5%
+    if (last < first * 0.95) return 'down'; // 下降超过5%
+    return 'flat';
+  };
+
+  // 过滤数据
+  const filteredByTrend = processedData.filter(item => {
+    if (epcTrendFilter === 'all') return true;
+    if (!item.epc_history || item.epc_history.length === 0) return false;
+    
+    const trend = checkEpcTrend(item.epc_history);
+    return trend === epcTrendFilter;
+  });
+
   // 排序函数
-  const sortedData = [...processedData].sort((a, b) => {
+  const sortedData = [...filteredByTrend].sort((a, b) => {
     const aValue = a[sortField];
     const bValue = b[sortField];
+    
+    // 特殊处理数值字段：30天EPC、30天转化率、月访问量
+    if (sortField === '30_epc' || sortField === '30_rate' || sortField === 'monthly_visits') {
+      const aNum = typeof aValue === 'number' ? aValue : parseFloat(String(aValue).replace(/[^\d.-]/g, '')) || 0;
+      const bNum = typeof bValue === 'number' ? bValue : parseFloat(String(bValue).replace(/[^\d.-]/g, '')) || 0;
+      
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+    }
     
     if (typeof aValue === 'string' && typeof bValue === 'string') {
       return sortDirection === 'asc' 
@@ -74,7 +100,12 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
       return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
     }
     
-    return 0;
+    // 处理混合类型的情况
+    const aStr = String(aValue || '');
+    const bStr = String(bValue || '');
+    return sortDirection === 'asc' 
+      ? aStr.localeCompare(bStr, 'zh-CN')
+      : bStr.localeCompare(aStr, 'zh-CN');
   });
 
   // 搜索过滤
@@ -112,6 +143,21 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
     return str.substring(0, maxLength) + '...';
   };
 
+  // 格式化数字显示（K、M、B单位）
+  const formatNumber = (value: string | number): string => {
+    const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/[^\d.-]/g, '')) || 0;
+    
+    if (num >= 1000000000) {
+      return (num / 1000000000).toFixed(1) + 'B';
+    } else if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'K';
+    } else {
+      return num.toString();
+    }
+  };
+
   // 检查文本是否需要截断
   const needsTruncation = (text: string | number, maxLength: number = 50) => {
     return String(text).length > maxLength;
@@ -127,23 +173,13 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
     }
   };
 
-  // 处理日期变化
-  const handleDateChange = (date: string) => {
-    setSelectedDate(date);
+  // 处理EPC趋势筛选变化
+  const handleEpcTrendFilterChange = (filter: 'all' | 'up' | 'down') => {
+    setEpcTrendFilter(filter);
     setCurrentPage(1); // 重置到第一页
   };
 
-  // 格式化日期显示
-  const formatDateDisplay = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  if (loading) {
+  if (loading && data.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -162,6 +198,16 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
+      {/* 加载指示器 */}
+      {loading && (
+        <div className="p-3 bg-blue-50 border-b border-blue-200">
+          <div className="flex items-center justify-center text-blue-600 text-sm">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+            正在加载数据...
+          </div>
+        </div>
+      )}
+      
       {/* 搜索和统计 */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -178,21 +224,6 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
             </span>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            {/* 日期选择 */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">数据日期:</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => handleDateChange(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
-              {selectedDate && (
-                <span className="text-sm text-gray-500">
-                  {formatDateDisplay(selectedDate)}
-                </span>
-              )}
-            </div>
             {/* EPC时间范围选择 */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">EPC趋势:</span>
@@ -212,6 +243,44 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                 ))}
               </div>
             </div>
+            
+            {/* EPC趋势筛选 */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">趋势筛选:</span>
+              <div className="flex border border-gray-300 rounded-md overflow-hidden">
+                <button
+                  onClick={() => handleEpcTrendFilterChange('all')}
+                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                    epcTrendFilter === 'all'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  全部
+                </button>
+                <button
+                  onClick={() => handleEpcTrendFilterChange('up')}
+                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                    epcTrendFilter === 'up'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  上升
+                </button>
+                <button
+                  onClick={() => handleEpcTrendFilterChange('down')}
+                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                    epcTrendFilter === 'down'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  下降
+                </button>
+              </div>
+            </div>
+            
             <div className="text-sm text-gray-600">
               第 {currentPage} 页，共 {totalPages} 页
             </div>
@@ -288,7 +357,7 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40"
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48"
               >
                 <span>{epcPeriod}天EPC趋势</span>
               </th>
@@ -296,9 +365,9 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedData.map((item, index) => (
-              <tr key={item.adv_id} className="hover:bg-gray-50 group">
-                <td className="px-4 py-4">
-                  <div className="flex items-start">
+              <tr key={item.adv_id} className="hover:bg-gray-50 group h-20">
+                <td className="px-4 py-4 h-20">
+                  <div className="flex items-start h-full">
                     {item.adv_logo && (
                       <img 
                         src={item.adv_logo} 
@@ -325,7 +394,7 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 h-20">
                   <div 
                     className="text-sm text-gray-900 break-words cursor-help"
                     title={needsTruncation(item.adv_category, 20) ? item.adv_category : undefined}
@@ -333,7 +402,7 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                     {formatText(item.adv_category || '-', 20)}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 h-20">
                   <div 
                     className="text-sm text-gray-900 break-words cursor-help"
                     title={needsTruncation(item.adv_type, 20) ? item.adv_type : undefined}
@@ -341,7 +410,7 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                     {formatText(item.adv_type || '-', 20)}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 h-20">
                   <div 
                     className="text-sm text-gray-900 break-words cursor-help"
                     title={needsTruncation(item.mailing_region, 20) ? item.mailing_region : undefined}
@@ -349,41 +418,75 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                     {formatText(item.mailing_region || '-', 20)}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 h-20">
                   <div 
                     className="text-sm text-gray-900 break-words cursor-help"
                     title={needsTruncation(item.monthly_visits, 15) ? item.monthly_visits : undefined}
                   >
-                    {formatText(item.monthly_visits || '-', 15)}
+                    {item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 h-20">
                   <div 
                     className="text-sm text-gray-900 break-words cursor-help"
-                    title={needsTruncation(item['30_epc'], 15) ? String(item['30_epc']) : undefined}
+                    title={String(item['30_epc'] || '-')}
                   >
-                    {formatText(item['30_epc'] || '-', 15)}
+                    {item['30_epc'] || '-'}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 h-20">
                   <div 
                     className="text-sm text-gray-900 break-words cursor-help"
-                    title={needsTruncation(item['30_rate'], 15) ? String(item['30_rate']) : undefined}
+                    title={String(item['30_rate'] || '-')}
                   >
-                    {formatText(item['30_rate'] || '-', 15)}
+                    {item['30_rate'] || '-'}
                   </div>
                 </td>
-                <td className="px-4 py-4">
-                  <div className="flex items-center justify-center">
-                    {item.epc_history && item.date_labels ? (
+                <td className="px-4 py-4 h-20">
+                  <div className="flex items-center justify-center h-full">
+                    {item.epc_history && item.date_labels && item.epc_history.length > 0 ? (
                       <div className="group relative">
-                        <EPCChart 
-                          data={item.epc_history} 
-                          labels={item.date_labels}
-                          width={140}
-                          height={40}
-                          color="#3B82F6"
-                        />
+                        <div className="flex items-center gap-2">
+                          <EPCChart 
+                            data={item.epc_history} 
+                            labels={item.date_labels}
+                            width={140}
+                            height={40}
+                            color="#3B82F6"
+                          />
+                          {/* 趋势指示器 */}
+                          {(() => {
+                            const trend = checkEpcTrend(item.epc_history);
+                            if (trend === 'up') {
+                              return (
+                                <div className="flex items-center text-green-600 text-xs">
+                                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                                  </svg>
+                                  上升
+                                </div>
+                              );
+                            } else if (trend === 'down') {
+                              return (
+                                <div className="flex items-center text-red-600 text-xs">
+                                  <svg className="w-4 h-4 mr-1 transform rotate-180" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                                  </svg>
+                                  下降
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex items-center text-gray-500 text-xs">
+                                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                                  </svg>
+                                  平稳
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
                         {/* 详细工具提示 */}
                         <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
                           <div className="font-medium mb-2">{epcPeriod}天EPC趋势</div>
@@ -396,7 +499,9 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                         </div>
                       </div>
                     ) : (
-                      <div className="text-gray-400 text-xs">无数据</div>
+                      <div className="flex items-center justify-center w-[140px] h-[40px] bg-gray-50 rounded border border-gray-200">
+                        <div className="text-gray-400 text-xs">暂无趋势数据</div>
+                      </div>
                     )}
                   </div>
                 </td>
@@ -421,9 +526,71 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
               >
                 上一页
               </button>
-              <span className="px-3 py-1 text-sm text-gray-700">
-                {currentPage} / {totalPages}
-              </span>
+              
+              {/* 页码显示 */}
+              <div className="flex items-center space-x-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-1 text-sm border rounded-md ${
+                        currentPage === pageNum
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* 跳页功能 */}
+              <div className="flex items-center space-x-2 ml-4">
+                <span className="text-sm text-gray-600">跳转到:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={totalPages}
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="页码"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      const targetPage = parseInt(e.currentTarget.value);
+                      if (targetPage >= 1 && targetPage <= totalPages) {
+                        setCurrentPage(targetPage);
+                        e.currentTarget.value = '';
+                      }
+                    }
+                  }}
+                />
+                <button
+                  onClick={(e) => {
+                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                    const targetPage = parseInt(input.value);
+                    if (targetPage >= 1 && targetPage <= totalPages) {
+                      setCurrentPage(targetPage);
+                      input.value = '';
+                    }
+                  }}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  跳转
+                </button>
+              </div>
+              
               <button
                 onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}

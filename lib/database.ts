@@ -107,31 +107,8 @@ export class DatabaseService {
               },
             });
 
-            // 3. 生成并保存EPC历史数据（模拟7天数据）
-            const epcHistoryData = this.generateEpcHistoryData(data['30_epc']);
-            for (let i = 0; i < epcHistoryData.length; i++) {
-              const epcValue = epcHistoryData[i];
-              const dayOffset = i + 1;
-              
-              await tx.epcHistory.upsert({
-                where: {
-                  advertiserId_snapshotDate_dayOffset: {
-                    advertiserId: advertiser.id,
-                    snapshotDate: snapshotDate,
-                    dayOffset: dayOffset,
-                  },
-                },
-                update: {
-                  epcValue: epcValue,
-                },
-                create: {
-                  advertiserId: advertiser.id,
-                  snapshotDate: snapshotDate,
-                  epcValue: epcValue,
-                  dayOffset: dayOffset,
-                },
-              });
-            }
+            // 注意：不再生成虚假的EPC历史数据
+            // EPC历史数据将基于真实的每日快照数据动态构建
 
             successCount++;
           } catch (error) {
@@ -210,39 +187,16 @@ export class DatabaseService {
             snapshotDate: 'asc',
           },
         },
-        epcHistory: {
-          where: {
-            snapshotDate: {
-              gte: startDate,
-              lte: date,
-            },
-            dayOffset: {
-              lte: timeRange,
-            },
-          },
-          orderBy: [
-            { snapshotDate: 'asc' },
-            { dayOffset: 'asc' },
-          ],
-        },
       },
     });
 
     return advertisers.map(advertiser => {
       const latestSnapshot = advertiser.snapshots[advertiser.snapshots.length - 1];
       
-      // 构建真实的EPC历史数据
+      // 基于真实快照数据构建EPC历史数据
       const epcHistoryData: number[] = [];
       const dateLabels: string[] = [];
       
-      // 按日期和天数偏移排序EPC历史数据
-      const sortedEpcHistory = advertiser.epcHistory.sort((a, b) => {
-        if (a.snapshotDate.getTime() !== b.snapshotDate.getTime()) {
-          return a.snapshotDate.getTime() - b.snapshotDate.getTime();
-        }
-        return a.dayOffset - b.dayOffset;
-      });
-
       // 生成日期标签
       for (let i = 0; i < timeRange; i++) {
         const date = new Date(startDate);
@@ -250,25 +204,32 @@ export class DatabaseService {
         dateLabels.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
       }
 
-      // 构建EPC数据数组
+      // 构建EPC数据数组 - 基于真实快照数据
       for (let i = 0; i < timeRange; i++) {
         const targetDate = new Date(startDate);
         targetDate.setDate(targetDate.getDate() + i);
-        const dayOffset = i + 1;
         
-        // 查找对应日期的EPC数据
-        const epcRecord = sortedEpcHistory.find(epc => 
-          epc.snapshotDate.toDateString() === targetDate.toDateString() && 
-          epc.dayOffset === dayOffset
+        // 查找该日期的快照数据
+        const snapshotForDate = advertiser.snapshots.find(snapshot => 
+          snapshot.snapshotDate.toDateString() === targetDate.toDateString()
         );
         
-        if (epcRecord) {
-          epcHistoryData.push(Number(epcRecord.epcValue));
+        if (snapshotForDate && snapshotForDate.epc30 !== null) {
+          epcHistoryData.push(Number(snapshotForDate.epc30));
         } else {
-          // 如果没有找到对应数据，使用默认值
+          // 如果该日期没有快照数据，显示0
           epcHistoryData.push(0);
         }
       }
+
+      // 调试信息
+      console.log(`广告商 ${advertiser.advName} 的EPC数据:`, {
+        snapshotsCount: advertiser.snapshots.length,
+        timeRange,
+        epcHistoryData,
+        dateLabels,
+        hasData: epcHistoryData.some(epc => epc > 0)
+      });
 
       return {
         adv_logo: advertiser.advLogo || '',
@@ -372,22 +333,5 @@ export class DatabaseService {
       where: { id },
       data,
     });
-  }
-
-  /**
-   * 生成模拟EPC历史数据
-   */
-  private static generateEpcHistoryData(baseEpc: number | string): number[] {
-    const baseValue = typeof baseEpc === 'number' ? baseEpc : parseFloat(baseEpc as string) || 0;
-    const epcData: number[] = [];
-    
-    for (let i = 0; i < 30; i++) {
-      // 生成基于基础值的随机波动数据
-      const variation = (Math.random() - 0.5) * 0.3; // ±15% 波动
-      const epcValue = Math.max(0, baseValue * (1 + variation));
-      epcData.push(parseFloat(epcValue.toFixed(4)));
-    }
-    
-    return epcData;
   }
 } 

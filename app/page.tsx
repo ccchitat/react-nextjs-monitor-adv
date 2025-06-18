@@ -28,6 +28,7 @@ interface Advertiser {
 export default function Home() {
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -81,10 +82,9 @@ export default function Home() {
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      setFetching(true);
       setError(null);
       setProgress({ current: 0, total: 0 });
-      setAdvertisers([]); // 清空之前的数据
       
       // 创建新的 AbortController
       abortControllerRef.current = new AbortController();
@@ -123,7 +123,7 @@ export default function Home() {
               console.log('抓取完成，重新加载数据库数据');
               // 抓取完成后重新从数据库加载数据
               setTimeout(() => {
-                loadDataFromDatabase();
+                loadDataFromDatabase(epcTimeRange);
               }, 1000);
             }
           } catch (e) {
@@ -138,7 +138,7 @@ export default function Home() {
         setError(err.message || '请求失败，请稍后重试');
       }
     } finally {
-      setLoading(false);
+      setFetching(false);
       abortControllerRef.current = null;
     }
   };
@@ -146,7 +146,7 @@ export default function Home() {
   const stopFetching = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      setLoading(false);
+      setFetching(false);
     }
   };
 
@@ -234,13 +234,13 @@ export default function Home() {
               <>
                 <button
                   onClick={fetchData}
-                  disabled={loading}
+                  disabled={fetching}
                   className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
                 >
-                  {loading ? '抓取中...' : '开始抓取'}
+                  {fetching ? '抓取中...' : '开始抓取'}
                 </button>
                 
-                {loading && (
+                {fetching && (
                   <button
                     onClick={stopFetching}
                     className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
@@ -253,7 +253,7 @@ export default function Home() {
           </div>
         </div>
 
-        {loading && progress.total > 0 && (
+        {fetching && progress.total > 0 && (
           <div className="mb-6 p-4 bg-white rounded-lg shadow">
             <div className="mb-2">
               <div className="w-full bg-gray-200 rounded-full h-3">
@@ -273,7 +273,7 @@ export default function Home() {
           <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
             <div className="flex items-center">
               <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
               {error}
             </div>
