@@ -37,3 +37,5 @@ yarn-error.log*
 /prisma/migrations
 /app/generated
 .env.example
+
+/generated/prisma

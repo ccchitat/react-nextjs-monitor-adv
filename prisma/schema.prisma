@@ -3,7 +3,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../app/generated/prisma"
 }
 
 datasource db {
@@ -11,18 +10,73 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-model User {
-  id       Int        @id @default(autoincrement())
-  email    String     @unique
-  password String
-  TodoList TodoList[]
+model Advertiser {
+  id                BigInt   @id @default(autoincrement())
+  advId             String   @unique @map("adv_id")
+  advName           String   @map("adv_name")
+  mId               String?  @map("m_id")
+  advCategory       String?  @map("adv_category")
+  advType           String?  @map("adv_type")
+  mailingRegion     String?  @map("mailing_region")
+  approvalType      String?  @map("approval_type")
+  approvalTypeText  String?  @map("approval_type_text")
+  advLogo           String?  @map("adv_logo")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  snapshots AdvertiserSnapshot[]
+  epcHistory EpcHistory[]
+  
+  @@map("advertisers")
 }
 
-model TodoList {
-  id       Int     @id @default(autoincrement())
-  userId   Int
-  user     User    @relation(fields: [userId], references: [id])
-  content  String
-  complete Boolean @default(false)
+model AdvertiserSnapshot {
+  id              BigInt   @id @default(autoincrement())
+  advertiserId    BigInt   @map("advertiser_id")
+  snapshotDate    DateTime @map("snapshot_date")
+  monthlyVisits   String?  @map("monthly_visits")
+  rd              String?
+  epc30           Decimal? @map("epc_30") @db.Decimal(10, 4)
+  rate30          Decimal? @map("rate_30") @db.Decimal(10, 4)
+  affBa           String?  @map("aff_ba")
+  affBaUnit       String?  @map("aff_ba_unit")
+  affBaText       String?  @map("aff_ba_text")
+  joinStatus      String?  @map("join_status")
+  joinStatusText  String?  @map("join_status_text")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  advertiser Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  
+  @@unique([advertiserId, snapshotDate])
+  @@map("advertiser_snapshots")
+}
+
+model EpcHistory {
+  id            BigInt   @id @default(autoincrement())
+  advertiserId  BigInt   @map("advertiser_id")
+  snapshotDate  DateTime @map("snapshot_date")
+  epcValue      Decimal  @map("epc_value") @db.Decimal(10, 4)
+  dayOffset     Int      @map("day_offset")
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  advertiser Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  
+  @@unique([advertiserId, snapshotDate, dayOffset])
+  @@map("epc_history")
+}
+
+model CrawlLog {
+  id                BigInt   @id @default(autoincrement())
+  crawlDate         DateTime @map("crawl_date")
+  totalAdvertisers  Int?     @map("total_advertisers")
+  successCount      Int?     @map("success_count")
+  errorCount        Int?     @map("error_count")
+  startTime         DateTime @map("start_time")
+  endTime           DateTime? @map("end_time")
+  durationSeconds   Int?     @map("duration_seconds")
+  status            String
+  errorMessage      String?  @map("error_message")
+  createdAt         DateTime @default(now()) @map("created_at")
+  
+  @@map("crawl_logs")
 }

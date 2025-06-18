@@ -4,7 +4,14 @@
     "dev": "prisma generate && next dev",
     "build": "prisma generate && prisma db push && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:test": "node scripts/test-db.js",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "node scripts/seed.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.0.18",
@@ -13,6 +20,7 @@
     "@types/node-fetch": "^2.6.12",
     "@types/react": "^18.0.25",
     "bcrypt": "^5.1.0",
+    "encoding": "^0.1.13",
     "install": "^0.13.0",
     "next": "^13.4.2",
     "next-auth": "^4.22.1",

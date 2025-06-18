@@ -1,0 +1,15 @@
+{
+  "buildCommand": "prisma generate && prisma db push && next build",
+  "devCommand": "prisma generate && next dev",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "regions": ["hkg1"],
+  "env": {
+    "DATABASE_URL": "@database_url"
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 60
+    }
+  }
+} 
