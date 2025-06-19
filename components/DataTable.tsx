@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import EPCChart from './EPCChart';
 
 interface Advertiser {
@@ -88,111 +88,31 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   const checkEpcTrend = (epcHistory: number[]): 'up' | 'down' | 'flat' => {
     if (!epcHistory || epcHistory.length < 2) return 'flat';
     
-    const validData = epcHistory.filter(epc => epc > 0);
+    const validData = epcHistory.filter(epc => !isNaN(epc) && epc !== null && epc !== undefined);
     if (validData.length < 2) return 'flat';
     
     const first = validData[0];
     const last = validData[validData.length - 1];
+    const change = ((last - first) / first) * 100;
     
-    if (last > first * 1.05) return 'up'; // 上升超过5%
-    if (last < first * 0.95) return 'down'; // 下降超过5%
-    return 'flat';
+    if (change > 5) return 'up';      // 上升超过5%
+    if (change < -5) return 'down';   // 下降超过5%
+    return 'flat';                    // 变化在±5%以内视为平稳
   };
 
-  // 过滤数据
-  const filteredByTrend = processedData.filter(item => {
-    if (epcTrendFilter === 'all') return true;
-    if (!item.epc_history || item.epc_history.length === 0) return false;
-    
-    const trend = checkEpcTrend(item.epc_history);
-    return trend === epcTrendFilter;
-  });
-
-  // 排序函数
-  const sortedData = [...filteredByTrend].sort((a, b) => {
-    if (!sortField || !sortDirection) return 0;
-    
-    const aValue = a[sortField];
-    const bValue = b[sortField];
-    
-    // 特殊处理数值字段：30天EPC、30天转化率、月访问量
-    if (sortField === '30_epc' || sortField === '30_rate' || sortField === 'monthly_visits') {
-      const aNum = typeof aValue === 'number' ? aValue : parseFloat(String(aValue).replace(/[^\d.-]/g, '')) || 0;
-      const bNum = typeof bValue === 'number' ? bValue : parseFloat(String(bValue).replace(/[^\d.-]/g, '')) || 0;
-      
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-    }
-    
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      return sortDirection === 'asc' 
-        ? aValue.localeCompare(bValue, 'zh-CN')
-        : bValue.localeCompare(aValue, 'zh-CN');
-    }
-    
-    if (typeof aValue === 'number' && typeof bValue === 'number') {
-      return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-    }
-    
-    // 处理混合类型的情况
-    const aStr = String(aValue || '');
-    const bStr = String(bValue || '');
-    return sortDirection === 'asc' 
-      ? aStr.localeCompare(bStr, 'zh-CN')
-      : bStr.localeCompare(aStr, 'zh-CN');
-  });
-
-  // 搜索过滤
-  const searchFilteredData = sortedData.filter(item =>
-    Object.values(item).some(value =>
-      String(value).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
-
-  // EPC趋势筛选
-  const filteredData = searchFilteredData.filter(item => {
-    if (epcTrendFilter === 'all') return true;
-    
-    const itemEpcData = epcData[item.adv_id];
-    if (!itemEpcData || !itemEpcData.history || itemEpcData.history.length === 0) {
-      // 如果没有EPC数据，可以根据筛选条件决定是否显示
-      // 例如，如果筛选'平稳'，可以认为无数据为平稳
-      return epcTrendFilter === 'flat'; 
-    }
-    
-    const trend = checkEpcTrend(itemEpcData.history);
-    return trend === epcTrendFilter;
-  });
-
-  // 通知父组件当前可导出的数据
+  // 当数据变化时，获取所有数据的EPC趋势
   useEffect(() => {
-    if (onExportDataChange) {
-      onExportDataChange(filteredData);
-    }
-  }, [filteredData, onExportDataChange]);
-
-  // 分页
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
-
-  // 当分页数据变化时，获取当前页的EPC数据
-  useEffect(() => {
-    const fetchEpcDataForPage = async () => {
-      if (paginatedData.length === 0 || !selectedDate) return;
+    const fetchAllEpcData = async () => {
+      if (processedData.length === 0 || !selectedDate) return;
       
-      console.log('[DataTable] 检查当前页的EPC数据, 总数:', paginatedData.length);
-
-      const idsToFetch = paginatedData
+      // 获取所有需要加载的广告商ID
+      const idsToFetch = processedData
         .map(item => item.adv_id)
         .filter(id => !epcData[id] && !loadingEpc[id]);
 
-      if (idsToFetch.length === 0) {
-        console.log('[DataTable] 当前页所有EPC数据都已加载, 无需获取。');
-        return;
-      }
-      
-      console.log(`[DataTable] 准备为 ${idsToFetch.length} 个广告商获取EPC数据:`, idsToFetch);
+      if (idsToFetch.length === 0) return;
 
+      // 更新加载状态
       setLoadingEpc(prev => {
         const newLoading = { ...prev };
         idsToFetch.forEach(id => { newLoading[id] = true; });
@@ -200,23 +120,39 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
       });
 
       try {
-        const response = await fetch(`/api/epc`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            adv_ids: idsToFetch,
-            period: epcPeriod,
-            endDate: selectedDate
-          }),
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            console.log(`[DataTable] 成功获取到 ${Object.keys(result.data).length} 个广告商的EPC数据`, result.data);
-            setEpcData(prev => ({ ...prev, ...result.data }));
-          }
+        // 分批获取数据，每批50个
+        const batchSize = 50;
+        const batches = [];
+        for (let i = 0; i < idsToFetch.length; i += batchSize) {
+          batches.push(idsToFetch.slice(i, i + batchSize));
         }
+
+        // 并发请求所有批次
+        const results = await Promise.all(
+          batches.map(async (batch) => {
+            const response = await fetch(`/api/epc`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                adv_ids: batch,
+                period: epcPeriod,
+                endDate: selectedDate
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error('获取EPC数据失败');
+            }
+
+            const result = await response.json();
+            return result.success ? result.data : {};
+          })
+        );
+
+        // 合并所有批次的结果
+        const combinedResults = results.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+        setEpcData(prev => ({ ...prev, ...combinedResults }));
+
       } catch (error) {
         console.error('[DataTable] 获取EPC数据失败:', error);
       } finally {
@@ -228,8 +164,84 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
       }
     };
 
-    fetchEpcDataForPage();
-  }, [paginatedData, epcPeriod, selectedDate, epcData, loadingEpc]);
+    fetchAllEpcData();
+  }, [processedData, epcPeriod, selectedDate]);
+
+  // 过滤数据
+  const filteredByTrend = useMemo(() => {
+    // 如果正在加载任何EPC数据，返回所有数据
+    if (Object.keys(loadingEpc).length > 0) {
+      return processedData;
+    }
+
+    return processedData.filter(item => {
+      if (epcTrendFilter === 'all') return true;
+      
+      const itemEpcData = epcData[item.adv_id];
+      
+      // 如果没有数据且筛选条件是平稳，则显示
+      if (!itemEpcData || !itemEpcData.history || itemEpcData.history.length === 0) {
+        return epcTrendFilter === 'flat';
+      }
+      
+      const trend = checkEpcTrend(itemEpcData.history);
+      return trend === epcTrendFilter;
+    });
+  }, [processedData, epcData, epcTrendFilter, loadingEpc]);
+
+  // 搜索过滤
+  const searchFilteredData = useMemo(() => {
+    return filteredByTrend.filter(item =>
+      Object.values(item).some(value =>
+        String(value).toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    );
+  }, [filteredByTrend, searchTerm]);
+
+  // 排序
+  const sortedData = useMemo(() => {
+    return [...searchFilteredData].sort((a, b) => {
+      if (!sortField || !sortDirection) return 0;
+      
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+      
+      if (sortField === '30_epc' || sortField === '30_rate' || sortField === 'monthly_visits') {
+        const aNum = typeof aValue === 'number' ? aValue : parseFloat(String(aValue).replace(/[^\d.-]/g, '')) || 0;
+        const bNum = typeof bValue === 'number' ? bValue : parseFloat(String(bValue).replace(/[^\d.-]/g, '')) || 0;
+        
+        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      }
+      
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc' 
+          ? aValue.localeCompare(bValue, 'zh-CN')
+          : bValue.localeCompare(aValue, 'zh-CN');
+      }
+      
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+      
+      const aStr = String(aValue || '');
+      const bStr = String(bValue || '');
+      return sortDirection === 'asc' 
+        ? aStr.localeCompare(bStr, 'zh-CN')
+        : bStr.localeCompare(aStr, 'zh-CN');
+    });
+  }, [searchFilteredData, sortField, sortDirection]);
+
+  // 分页
+  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedData = sortedData.slice(startIndex, startIndex + itemsPerPage);
+
+  // 通知父组件当前可导出的数据
+  useEffect(() => {
+    if (onExportDataChange) {
+      onExportDataChange(sortedData);
+    }
+  }, [sortedData, onExportDataChange]);
 
   // 处理排序
   const handleSort = (field: keyof Advertiser) => {
@@ -293,10 +305,8 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   const handleEpcPeriodChange = (period: EPCPeriod) => {
     setEpcPeriod(period);
     setCurrentPage(1); // 重置到第一页
-    console.log(`[DataTable] EPC周期变为 ${period} 天, 已清空缓存的EPC数据。`);
     setEpcData({}); // 清空已获取的EPC数据
     setLoadingEpc({}); // 清空加载状态
-    // 通知父组件，但父组件现在不需要重新加载数据
     if (onEpcPeriodChange) {
       onEpcPeriodChange(period);
     }
@@ -349,7 +359,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <span className="text-sm text-gray-600">
-              共 {filteredData.length} 条记录
+              共 {sortedData.length} 条记录
             </span>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -381,7 +391,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   onClick={() => handleEpcTrendFilterChange('all')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
                     epcTrendFilter === 'all'
-                      ? 'bg-green-600 text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                 >
@@ -401,7 +411,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   onClick={() => handleEpcTrendFilterChange('down')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
                     epcTrendFilter === 'down'
-                      ? 'bg-green-600 text-white'
+                      ? 'bg-red-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                 >
@@ -411,7 +421,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   onClick={() => handleEpcTrendFilterChange('flat')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
                     epcTrendFilter === 'flat'
-                      ? 'bg-green-600 text-white'
+                      ? 'bg-gray-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                 >
@@ -640,7 +650,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
         <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              显示第 {startIndex + 1} 到 {Math.min(startIndex + itemsPerPage, filteredData.length)} 条，共 {filteredData.length} 条
+              显示第 {startIndex + 1} 到 {Math.min(startIndex + itemsPerPage, sortedData.length)} 条，共 {sortedData.length} 条
             </div>
             <div className="flex items-center space-x-2">
               <button
