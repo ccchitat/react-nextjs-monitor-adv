@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -170,18 +170,21 @@ export class DatabaseService {
   /**
    * 获取指定日期的广告商数据
    */
-  static async getAdvertiserDataByDate(date: Date, timeRange: number = 7) {
-    const startDate = new Date(date);
-    startDate.setDate(startDate.getDate() - timeRange + 1);
-
+  static async getAdvertiserDataByDate(date: Date, timeRange?: number) {
+    console.log(`[DatabaseService] getAdvertiserDataByDate 调用, 日期: ${date.toISOString().split('T')[0]}, timeRange: ${timeRange}`);
     const advertisers = await prisma.advertiser.findMany({
       include: {
         snapshots: {
           where: {
-            snapshotDate: {
-              gte: startDate,
-              lte: date,
-            },
+            snapshotDate: timeRange
+              ? {
+                  gte: new Date(new Date(date).setDate(date.getDate() - timeRange + 1)),
+                  lte: date,
+                }
+              : {
+                  gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+                  lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1),
+                },
           },
           orderBy: {
             snapshotDate: 'asc',
@@ -190,46 +193,41 @@ export class DatabaseService {
       },
     });
 
+    console.log(`[DatabaseService] getAdvertiserDataByDate 查询到 ${advertisers.length} 个广告商的基础数据`);
+
     return advertisers.map(advertiser => {
+      if (advertiser.snapshots.length === 0) {
+        // 如果在指定日期没有快照，可能意味着这个广告商在该日期没有数据，可以考虑跳过
+        console.log(`[DatabaseService] 广告商 ${advertiser.advId} 在指定日期范围内没有快照数据, 将被过滤。`);
+        return null;
+      }
       const latestSnapshot = advertiser.snapshots[advertiser.snapshots.length - 1];
       
-      // 基于真实快照数据构建EPC历史数据
-      const epcHistoryData: number[] = [];
-      const dateLabels: string[] = [];
+      let epcHistoryData: number[] | undefined = undefined;
+      let dateLabels: string[] | undefined = undefined;
       
-      // 生成日期标签
-      for (let i = 0; i < timeRange; i++) {
-        const date = new Date(startDate);
-        date.setDate(date.getDate() + i);
-        dateLabels.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
-      }
+      if (timeRange) {
+        epcHistoryData = [];
+        dateLabels = [];
+        const startDate = new Date(date);
+        startDate.setDate(startDate.getDate() - timeRange + 1);
 
-      // 构建EPC数据数组 - 基于真实快照数据
-      for (let i = 0; i < timeRange; i++) {
-        const targetDate = new Date(startDate);
-        targetDate.setDate(targetDate.getDate() + i);
-        
-        // 查找该日期的快照数据
-        const snapshotForDate = advertiser.snapshots.find(snapshot => 
-          snapshot.snapshotDate.toDateString() === targetDate.toDateString()
-        );
-        
-        if (snapshotForDate && snapshotForDate.epc30 !== null) {
-          epcHistoryData.push(Number(snapshotForDate.epc30));
-        } else {
-          // 如果该日期没有快照数据，显示0
-          epcHistoryData.push(0);
+        for (let i = 0; i < timeRange; i++) {
+          const iterDate = new Date(startDate);
+          iterDate.setDate(iterDate.getDate() + i);
+          dateLabels.push(iterDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
+
+          const snapshotForDate = advertiser.snapshots.find((snapshot: any) => 
+            snapshot.snapshotDate.toDateString() === iterDate.toDateString()
+          );
+          
+          if (snapshotForDate && snapshotForDate.epc30 !== null) {
+            epcHistoryData.push(Number(snapshotForDate.epc30));
+          } else {
+            epcHistoryData.push(0);
+          }
         }
       }
-
-      // 调试信息
-      console.log(`广告商 ${advertiser.advName} 的EPC数据:`, {
-        snapshotsCount: advertiser.snapshots.length,
-        timeRange,
-        epcHistoryData,
-        dateLabels,
-        hasData: epcHistoryData.some(epc => epc > 0)
-      });
 
       return {
         adv_logo: advertiser.advLogo || '',
@@ -250,10 +248,69 @@ export class DatabaseService {
         join_status: latestSnapshot?.joinStatus || '',
         join_status_text: latestSnapshot?.joinStatusText || '',
         approval_type_text: advertiser.approvalTypeText || '',
-        epc_history: epcHistoryData,
-        date_labels: dateLabels,
+        ...(timeRange && { epc_history: epcHistoryData, date_labels: dateLabels }),
       };
+    }).filter(item => item !== null);
+  }
+
+  /**
+   * 为指定的广告商列表获取EPC历史数据
+   */
+  static async getEpcHistoryForAdvertisers(
+    advIds: string[],
+    period: number,
+    endDate: Date
+  ): Promise<Record<string, { history: number[]; labels: string[] }>> {
+    console.log(`[DatabaseService] getEpcHistoryForAdvertisers 调用, advIds数量: ${advIds.length}, period: ${period}, endDate: ${endDate.toISOString().split('T')[0]}`);
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - period + 1);
+
+    const advertisers = await prisma.advertiser.findMany({
+      where: {
+        advId: { in: advIds },
+      },
+      include: {
+        snapshots: {
+          where: {
+            snapshotDate: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+          orderBy: {
+            snapshotDate: 'asc',
+          },
+        },
+      },
     });
+
+    const epcData: Record<string, { history: number[]; labels: string[] }> = {};
+
+    if(advertisers.length > 0) {
+      console.log(`[DatabaseService] getEpcHistoryForAdvertisers 从数据库中查询到 ${advertisers.length} 个广告商的快照数据。`);
+    }
+
+    for (const advertiser of advertisers) {
+      const history: number[] = [];
+      const labels: string[] = [];
+      
+      for (let i = 0; i < period; i++) {
+        const targetDate = new Date(startDate);
+        targetDate.setDate(targetDate.getDate() + i);
+        labels.push(targetDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
+        
+        const snapshotForDate = advertiser.snapshots.find(
+          (s) => s.snapshotDate.toDateString() === targetDate.toDateString()
+        );
+        
+        history.push(snapshotForDate?.epc30 ? Number(snapshotForDate.epc30) : 0);
+      }
+      
+      epcData[advertiser.advId] = { history, labels };
+    }
+
+    console.log(`[DatabaseService] getEpcHistoryForAdvertisers 构建完成 ${Object.keys(epcData).length} 个广告商的EPC历史。`);
+    return epcData;
   }
 
   /**

@@ -5,7 +5,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
-    const timeRange = parseInt(searchParams.get('timeRange') || '7');
+    const timeRangeParam = searchParams.get('timeRange');
+    const timeRange = timeRangeParam ? parseInt(timeRangeParam) : undefined;
+    
+    console.log(`[/api/data] 收到GET请求, date: ${date}, timeRange: ${timeRange}`);
 
     if (!date) {
       return NextResponse.json({
@@ -29,6 +32,8 @@ export async function GET(request: NextRequest) {
 
     // 从数据库加载数据
     const advertisers = await DatabaseService.getAdvertiserDataByDate(targetDate, timeRange);
+    
+    console.log(`[/api/data] 成功返回 ${advertisers.length} 条广告商数据。`);
 
     return NextResponse.json({
       success: true,

@@ -45,13 +45,14 @@ export default function Home() {
   }, []);
 
   // 从数据库加载数据
-  const loadDataFromDatabase = async (timeRange: number = 7) => {
+  const loadDataFromDatabase = async () => {
     try {
       setLoading(true);
       setError(null);
       setAdvertisers([]);
       
-      const response = await fetch(`/api/data?date=${selectedDate || new Date().toISOString().split('T')[0]}&timeRange=${timeRange}`);
+      console.log(`[page.tsx] 正在从数据库加载数据，日期: ${selectedDate}`);
+      const response = await fetch(`/api/data?date=${selectedDate || new Date().toISOString().split('T')[0]}`);
       
       if (!response.ok) {
         throw new Error('加载数据失败');
@@ -62,9 +63,9 @@ export default function Home() {
       if (result.success) {
         setAdvertisers(result.data || []);
         if (result.data && result.data.length > 0) {
-          console.log(`从数据库加载了 ${result.data.length} 条数据`);
+          console.log(`[page.tsx] 成功从数据库加载了 ${result.data.length} 条基础数据`);
         } else {
-          console.log('数据库中暂无该日期的数据');
+          console.log('[page.tsx] 数据库中暂无该日期的数据');
         }
       } else {
         setError(result.message || '加载数据失败');
@@ -79,9 +80,9 @@ export default function Home() {
   // 页面加载时自动加载数据
   useEffect(() => {
     if (selectedDate) {
-      loadDataFromDatabase(epcTimeRange);
+      loadDataFromDatabase();
     }
-  }, [selectedDate, epcTimeRange]);
+  }, [selectedDate]);
 
   const fetchData = async () => {
     try {
@@ -126,7 +127,7 @@ export default function Home() {
               console.log('抓取完成，重新加载数据库数据');
               // 抓取完成后重新从数据库加载数据
               setTimeout(() => {
-                loadDataFromDatabase(epcTimeRange);
+                loadDataFromDatabase();
               }, 1000);
             }
           } catch (e) {
@@ -390,6 +391,7 @@ export default function Home() {
           loading={loading} 
           onEpcPeriodChange={handleEpcPeriodChange}
           onExportDataChange={setExportData}
+          selectedDate={selectedDate}
         />
       </div>
     </main>

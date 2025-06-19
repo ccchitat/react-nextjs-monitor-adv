@@ -29,20 +29,50 @@ interface Advertiser {
 interface DataTableProps {
   data: Advertiser[];
   loading: boolean;
+  selectedDate: string;
   onEpcPeriodChange?: (period: EPCPeriod) => void;
   onExportDataChange?: (data: Advertiser[]) => void;
 }
 
 type EPCPeriod = 7 | 14 | 30;
 
-export default function DataTable({ data, loading, onEpcPeriodChange, onExportDataChange }: DataTableProps) {
-  const [sortField, setSortField] = useState<keyof Advertiser>('adv_name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+const AdvertiserLogo = ({ logoUrl, advertiserName }: { logoUrl: string, advertiserName: string }) => {
+  const [hasError, setHasError] = useState(!logoUrl);
+
+  useEffect(() => {
+    setHasError(!logoUrl);
+  }, [logoUrl]);
+
+  if (hasError) {
+    return (
+      <div className="h-8 w-8 rounded-full mr-3 flex-shrink-0 bg-gray-200 flex items-center justify-center">
+        <span className="font-medium text-gray-500 text-xs">
+          {advertiserName ? advertiserName.charAt(0).toUpperCase() : '?'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={logoUrl}
+      alt={advertiserName}
+      className="h-8 w-8 rounded-full mr-3 flex-shrink-0 object-cover"
+      onError={() => setHasError(true)}
+    />
+  );
+};
+
+export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, onExportDataChange }: DataTableProps) {
+  const [sortField, setSortField] = useState<keyof Advertiser | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [processedData, setProcessedData] = useState<Advertiser[]>([]);
   const [epcPeriod, setEpcPeriod] = useState<EPCPeriod>(7);
   const [epcTrendFilter, setEpcTrendFilter] = useState<'all' | 'up' | 'down' | 'flat'>('all');
+  const [epcData, setEpcData] = useState<Record<string, { history: number[], labels: string[] }>>({});
+  const [loadingEpc, setLoadingEpc] = useState<Record<string, boolean>>({});
   const itemsPerPage = 20;
 
   // 处理数据，直接使用数据库返回的真实数据
@@ -80,6 +110,8 @@ export default function DataTable({ data, loading, onEpcPeriodChange, onExportDa
 
   // 排序函数
   const sortedData = [...filteredByTrend].sort((a, b) => {
+    if (!sortField || !sortDirection) return 0;
+    
     const aValue = a[sortField];
     const bValue = b[sortField];
     
@@ -120,11 +152,14 @@ export default function DataTable({ data, loading, onEpcPeriodChange, onExportDa
   const filteredData = searchFilteredData.filter(item => {
     if (epcTrendFilter === 'all') return true;
     
-    if (!item.epc_history || item.epc_history.length === 0) {
-      return epcTrendFilter === 'flat';
+    const itemEpcData = epcData[item.adv_id];
+    if (!itemEpcData || !itemEpcData.history || itemEpcData.history.length === 0) {
+      // 如果没有EPC数据，可以根据筛选条件决定是否显示
+      // 例如，如果筛选'平稳'，可以认为无数据为平稳
+      return epcTrendFilter === 'flat'; 
     }
     
-    const trend = checkEpcTrend(item.epc_history);
+    const trend = checkEpcTrend(itemEpcData.history);
     return trend === epcTrendFilter;
   });
 
@@ -140,10 +175,74 @@ export default function DataTable({ data, loading, onEpcPeriodChange, onExportDa
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
 
+  // 当分页数据变化时，获取当前页的EPC数据
+  useEffect(() => {
+    const fetchEpcDataForPage = async () => {
+      if (paginatedData.length === 0 || !selectedDate) return;
+      
+      console.log('[DataTable] 检查当前页的EPC数据, 总数:', paginatedData.length);
+
+      const idsToFetch = paginatedData
+        .map(item => item.adv_id)
+        .filter(id => !epcData[id] && !loadingEpc[id]);
+
+      if (idsToFetch.length === 0) {
+        console.log('[DataTable] 当前页所有EPC数据都已加载, 无需获取。');
+        return;
+      }
+      
+      console.log(`[DataTable] 准备为 ${idsToFetch.length} 个广告商获取EPC数据:`, idsToFetch);
+
+      setLoadingEpc(prev => {
+        const newLoading = { ...prev };
+        idsToFetch.forEach(id => { newLoading[id] = true; });
+        return newLoading;
+      });
+
+      try {
+        const response = await fetch(`/api/epc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adv_ids: idsToFetch,
+            period: epcPeriod,
+            endDate: selectedDate
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            console.log(`[DataTable] 成功获取到 ${Object.keys(result.data).length} 个广告商的EPC数据`, result.data);
+            setEpcData(prev => ({ ...prev, ...result.data }));
+          }
+        }
+      } catch (error) {
+        console.error('[DataTable] 获取EPC数据失败:', error);
+      } finally {
+        setLoadingEpc(prev => {
+          const newLoading = { ...prev };
+          idsToFetch.forEach(id => { delete newLoading[id]; });
+          return newLoading;
+        });
+      }
+    };
+
+    fetchEpcDataForPage();
+  }, [paginatedData, epcPeriod, selectedDate, epcData, loadingEpc]);
+
   // 处理排序
   const handleSort = (field: keyof Advertiser) => {
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      // 循环：null -> asc -> desc -> null
+      if (sortDirection === null) {
+        setSortDirection('asc');
+      } else if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else {
+        setSortField(null);
+        setSortDirection(null);
+      }
     } else {
       setSortField(field);
       setSortDirection('asc');
@@ -151,16 +250,28 @@ export default function DataTable({ data, loading, onEpcPeriodChange, onExportDa
   };
 
   // 获取排序图标
-  const getSortIcon = (field: keyof Advertiser) => {
-    if (sortField !== field) return '↕️';
-    return sortDirection === 'asc' ? '↑' : '↓';
-  };
-
-  // 格式化文本显示
-  const formatText = (text: string | number, maxLength: number = 50) => {
-    const str = String(text);
-    if (str.length <= maxLength) return str;
-    return str.substring(0, maxLength) + '...';
+  const SortIcon = ({ field }: { field: keyof Advertiser }) => {
+    const isCurrentField = sortField === field;
+    return (
+      <div className="flex flex-col -space-y-1">
+        <svg 
+          className={`w-3 h-3 ${isCurrentField && sortDirection === 'asc' ? 'text-green-500' : 'text-gray-400'}`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+        <svg 
+          className={`w-3 h-3 ${isCurrentField && sortDirection === 'desc' ? 'text-green-500' : 'text-gray-400'}`} 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+    );
   };
 
   // 格式化数字显示（K、M、B单位）
@@ -178,16 +289,14 @@ export default function DataTable({ data, loading, onEpcPeriodChange, onExportDa
     }
   };
 
-  // 检查文本是否需要截断
-  const needsTruncation = (text: string | number, maxLength: number = 50) => {
-    return String(text).length > maxLength;
-  };
-
   // 处理EPC周期变化
   const handleEpcPeriodChange = (period: EPCPeriod) => {
     setEpcPeriod(period);
     setCurrentPage(1); // 重置到第一页
-    // 通知父组件重新加载数据
+    console.log(`[DataTable] EPC周期变为 ${period} 天, 已清空缓存的EPC数据。`);
+    setEpcData({}); // 清空已获取的EPC数据
+    setLoadingEpc({}); // 清空加载状态
+    // 通知父组件，但父组件现在不需要重新加载数据
     if (onEpcPeriodChange) {
       onEpcPeriodChange(period);
     }
@@ -323,193 +432,201 @@ export default function DataTable({ data, loading, onEpcPeriodChange, onExportDa
         <table className="min-w-full divide-y divide-gray-300" style={{ tableLayout: 'fixed' }}>
           <thead className="bg-gray-50">
             <tr>
-              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-64">
+              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}>
                 广告商信息
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                 分类
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                 类型
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '80px', minWidth: '80px', maxWidth: '80px' }}>
                 地区
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('monthly_visits')}>
-                <div className="flex items-center justify-center gap-1">
-                  月访问量
-                  {getSortIcon('monthly_visits')}
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('monthly_visits')}>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="group-hover:text-gray-900">月访问量</span>
+                  <SortIcon field="monthly_visits" />
                 </div>
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('30_epc')}>
-                <div className="flex items-center justify-center gap-1">
-                  30天EPC
-                  {getSortIcon('30_epc')}
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('30_epc')}>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="group-hover:text-gray-900">30天EPC</span>
+                  <SortIcon field="30_epc" />
                 </div>
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('30_rate')}>
-                <div className="flex items-center justify-center gap-1">
-                  30天转化率
-                  {getSortIcon('30_rate')}
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('30_rate')}>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="group-hover:text-gray-900">30天转化率</span>
+                  <SortIcon field="30_rate" />
                 </div>
               </th>
-              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '180px', minWidth: '180px', maxWidth: '180px' }}>
                 <span>{epcPeriod}天EPC趋势</span>
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedData.map((item, index) => (
-              <tr key={item.adv_id} className="hover:bg-gray-50 group" style={{ height: '80px' }}>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+              <tr key={item.adv_id} className="hover:bg-gray-50 group h-20">
+                <td className="px-4 py-4" style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}>
                   <div className="flex items-center h-full">
-                    {item.adv_logo && (
-                      <img 
-                        src={item.adv_logo} 
-                        alt={item.adv_name}
-                        className="h-8 w-8 rounded-full mr-3 flex-shrink-0"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    )}
+                    <AdvertiserLogo logoUrl={item.adv_logo} advertiserName={item.adv_name} />
                     <div className="min-w-0 flex-1 flex flex-col justify-center">
                       <div 
-                        className="text-sm font-medium text-gray-900 break-words cursor-help leading-tight"
-                        title={needsTruncation(item.adv_name, 30) ? item.adv_name : undefined}
+                        className="text-sm font-medium text-gray-900 truncate cursor-help"
+                        title={item.adv_name}
                       >
-                        {formatText(item.adv_name, 30)}
+                        {item.adv_name}
                       </div>
                       <div 
-                        className="text-sm text-gray-500 break-words cursor-help leading-tight mt-1"
-                        title={needsTruncation(item.adv_id, 20) ? item.adv_id : undefined}
+                        className="text-sm text-gray-500 truncate cursor-help mt-1"
+                        title={item.adv_id}
                       >
-                        ID: {formatText(item.adv_id, 20)}
+                        ID: {item.adv_id}
                       </div>
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                   <div className="flex items-center justify-center h-full">
                     <div 
-                      className="text-sm text-gray-900 break-words cursor-help text-center"
-                      title={needsTruncation(item.adv_category, 20) ? item.adv_category : undefined}
+                      className="text-sm text-gray-900 truncate cursor-help text-center"
+                      title={item.adv_category || '-'}
                     >
-                      {formatText(item.adv_category || '-', 20)}
+                      {item.adv_category || '-'}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                   <div className="flex items-center justify-center h-full">
                     <div 
-                      className="text-sm text-gray-900 break-words cursor-help text-center"
-                      title={needsTruncation(item.adv_type, 20) ? item.adv_type : undefined}
+                      className="text-sm text-gray-900 truncate cursor-help text-center"
+                      title={item.adv_type || '-'}
                     >
-                      {formatText(item.adv_type || '-', 20)}
+                      {item.adv_type || '-'}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '80px', minWidth: '80px', maxWidth: '80px' }}>
                   <div className="flex items-center justify-center h-full">
                     <div 
-                      className="text-sm text-gray-900 break-words cursor-help text-center"
-                      title={needsTruncation(item.mailing_region, 20) ? item.mailing_region : undefined}
+                      className="text-sm text-gray-900 truncate cursor-help text-center"
+                      title={item.mailing_region || '-'}
                     >
-                      {formatText(item.mailing_region || '-', 20)}
+                      {item.mailing_region || '-'}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                   <div className="flex items-center justify-center h-full">
                     <div 
-                      className="text-sm text-gray-900 break-words cursor-help text-center"
-                      title={needsTruncation(item.monthly_visits, 15) ? item.monthly_visits : undefined}
+                      className="text-sm text-gray-900 truncate cursor-help text-center"
+                      title={item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
                     >
                       {item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                   <div className="flex items-center justify-center h-full">
                     <div 
-                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      className="text-sm text-gray-900 truncate cursor-help text-center"
                       title={String(item['30_epc'] || '-')}
                     >
                       {item['30_epc'] || '-'}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                   <div className="flex items-center justify-center h-full">
                     <div 
-                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      className="text-sm text-gray-900 truncate cursor-help text-center"
                       title={String(item['30_rate'] || '-')}
                     >
                       {item['30_rate'] || '-'}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ width: '180px', minWidth: '180px', maxWidth: '180px' }}>
                   <div className="flex items-center justify-center h-full">
-                    {item.epc_history && item.date_labels && item.epc_history.length > 0 ? (
-                      <div className="group relative flex items-center justify-center">
-                        <div className="flex items-center gap-2">
-                          <EPCChart 
-                            data={item.epc_history} 
-                            labels={item.date_labels}
-                            width={140}
-                            height={40}
-                            color="#3B82F6"
-                          />
-                          {/* 趋势指示器 */}
-                          {(() => {
-                            const trend = checkEpcTrend(item.epc_history);
-                            if (trend === 'up') {
-                              return (
-                                <div className="flex items-center text-green-600 text-xs">
-                                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                                  </svg>
-                                  上升
-                                </div>
-                              );
-                            } else if (trend === 'down') {
-                              return (
-                                <div className="flex items-center text-red-600 text-xs">
-                                  <svg className="w-4 h-4 mr-1 transform rotate-180" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                                  </svg>
-                                  下降
-                                </div>
-                              );
-                            } else {
-                              return (
-                                <div className="flex items-center text-gray-500 text-xs">
-                                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                  </svg>
-                                  平稳
-                                </div>
-                              );
-                            }
-                          })()}
-                        </div>
-                        {/* 详细工具提示 */}
-                        <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                          <div className="font-medium mb-2">{epcPeriod}天EPC趋势</div>
-                          {item.date_labels.map((label, idx) => (
-                            <div key={idx} className="flex justify-between gap-4">
-                              <span>{label}:</span>
-                              <span className="text-blue-300">{item.epc_history![idx]} EPC</span>
+                    {(() => {
+                      const itemEpcData = epcData[item.adv_id];
+                      const isLoading = loadingEpc[item.adv_id];
+
+                      if (isLoading) {
+                        return (
+                          <div className="flex items-center justify-center w-[140px] h-[40px]">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                          </div>
+                        );
+                      }
+
+                      if (itemEpcData && itemEpcData.history && itemEpcData.history.length > 0) {
+                        return (
+                          <div className="group relative flex items-center justify-center">
+                            <div className="flex items-center gap-2">
+                              <EPCChart
+                                data={itemEpcData.history}
+                                labels={itemEpcData.labels}
+                                width={140}
+                                height={40}
+                                color="#3B82F6"
+                              />
+                              {/* 趋势指示器 */}
+                              {(() => {
+                                const trend = checkEpcTrend(itemEpcData.history);
+                                if (trend === 'up') {
+                                  return (
+                                    <div className="flex items-center text-green-600 text-xs bg-green-50 px-2 py-1 rounded">
+                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                                      </svg>
+                                      上升
+                                    </div>
+                                  );
+                                } else if (trend === 'down') {
+                                  return (
+                                    <div className="flex items-center text-red-600 text-xs bg-red-50 px-2 py-1 rounded">
+                                      <svg className="w-3 h-3 mr-1 transform rotate-180" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                                      </svg>
+                                      下降
+                                    </div>
+                                  );
+                                } else {
+                                  return (
+                                    <div className="flex items-center text-gray-500 text-xs bg-gray-50 px-2 py-1 rounded">
+                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                                      </svg>
+                                      平稳
+                                    </div>
+                                  );
+                                }
+                              })()}
                             </div>
-                          ))}
+                            {/* 详细工具提示 */}
+                            <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                              <div className="font-medium mb-2">{epcPeriod}天EPC趋势</div>
+                              {itemEpcData.labels.map((label, idx) => (
+                                <div key={idx} className="flex justify-between gap-4">
+                                  <span>{label}:</span>
+                                  <span className="text-blue-300">{itemEpcData.history![idx]} EPC</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="flex items-center justify-center w-[140px] h-[40px] bg-gray-50 rounded border border-gray-200">
+                          <div className="text-gray-400 text-xs">暂无趋势数据</div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center w-[140px] h-[40px] bg-gray-50 rounded border border-gray-200">
-                        <div className="text-gray-400 text-xs">暂无趋势数据</div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 </td>
               </tr>
