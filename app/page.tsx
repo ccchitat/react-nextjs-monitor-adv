@@ -236,14 +236,15 @@ export default function Home() {
           <div className="flex gap-4">
             {isToday() && (
               <>
-                <button
-                  onClick={fetchData}
-                  disabled={fetching}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
-                >
-                  {fetching ? '抓取中...' : '开始抓取'}
-                </button>
-                
+                {!fetching && (
+                  <button
+                    onClick={fetchData}
+                    disabled={fetching}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
+                  >
+                    开始抓取
+                  </button>
+                )}
                 {fetching && (
                   <button
                     onClick={stopFetching}

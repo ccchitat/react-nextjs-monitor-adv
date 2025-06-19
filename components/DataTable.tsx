@@ -73,6 +73,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   const [epcTrendFilter, setEpcTrendFilter] = useState<'all' | 'up' | 'down' | 'flat'>('all');
   const [epcData, setEpcData] = useState<Record<string, { history: number[], labels: string[] }>>({});
   const [loadingEpc, setLoadingEpc] = useState<Record<string, boolean>>({});
+  const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
   const itemsPerPage = 20;
 
   // 处理数据，直接使用数据库返回的真实数据
@@ -478,9 +479,15 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedData.map((item, index) => (
+            {paginatedData.map((item, rowIdx) => (
               <tr key={item.adv_id} className="hover:bg-gray-50 group h-20">
-                <td className="px-4 py-4" style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}>
+                {/* 广告商信息 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 0 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center h-full">
                     <AdvertiserLogo logoUrl={item.adv_logo} advertiserName={item.adv_name} />
                     <div className="min-w-0 flex-1 flex flex-col justify-center">
@@ -498,8 +505,23 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       </div>
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 0 && (
+                    <div className="absolute -top-20 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-3 rounded-lg z-10 whitespace-nowrap">
+                      <div className="font-medium mb-1">广告商信息</div>
+                      <div>名称：{item.adv_name}</div>
+                      <div>ID：{item.adv_id}</div>
+                      <div>m_id：{item.m_id}</div>
+                      <div>联盟BA：{item.aff_ba}</div>
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
+                {/* 分类 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 1 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     <div 
                       className="text-sm text-gray-900 truncate cursor-help text-center"
@@ -508,8 +530,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       {item.adv_category || '-'}
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 1 && (
+                    <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-2 rounded-lg z-10 whitespace-nowrap">
+                      分类：{item.adv_category || '-'}
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
+                {/* 类型 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 2 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     <div 
                       className="text-sm text-gray-900 truncate cursor-help text-center"
@@ -518,8 +551,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       {item.adv_type || '-'}
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 2 && (
+                    <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-2 rounded-lg z-10 whitespace-nowrap">
+                      类型：{item.adv_type || '-'}
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '80px', minWidth: '80px', maxWidth: '80px' }}>
+                {/* 地区 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '80px', minWidth: '80px', maxWidth: '80px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 3 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     <div 
                       className="text-sm text-gray-900 truncate cursor-help text-center"
@@ -528,8 +572,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       {item.mailing_region || '-'}
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 3 && (
+                    <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-2 rounded-lg z-10 whitespace-nowrap">
+                      地区：{item.mailing_region || '-'}
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
+                {/* 月访问量 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 4 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     <div 
                       className="text-sm text-gray-900 truncate cursor-help text-center"
@@ -538,8 +593,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       {item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 4 && (
+                    <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-2 rounded-lg z-10 whitespace-nowrap">
+                      月访问量：{item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
+                {/* 30天EPC */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 5 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     <div 
                       className="text-sm text-gray-900 truncate cursor-help text-center"
@@ -548,8 +614,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       {item['30_epc'] || '-'}
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 5 && (
+                    <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-2 rounded-lg z-10 whitespace-nowrap">
+                      30天EPC：{item['30_epc'] || '-'}
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}>
+                {/* 30天转化率 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 6 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     <div 
                       className="text-sm text-gray-900 truncate cursor-help text-center"
@@ -558,8 +635,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                       {item['30_rate'] || '-'}
                     </div>
                   </div>
+                  {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 6 && (
+                    <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-2 rounded-lg z-10 whitespace-nowrap">
+                      30天转化率：{item['30_rate'] || '-'}
+                    </div>
+                  )}
                 </td>
-                <td className="px-4 py-4" style={{ width: '180px', minWidth: '180px', maxWidth: '180px' }}>
+                {/* EPC趋势 */}
+                <td
+                  className="px-4 py-4 relative"
+                  style={{ width: '180px', minWidth: '180px', maxWidth: '180px' }}
+                  onMouseEnter={() => setHoveredCell({ row: rowIdx, col: 7 })}
+                  onMouseLeave={() => setHoveredCell(null)}
+                >
                   <div className="flex items-center justify-center h-full">
                     {(() => {
                       const itemEpcData = epcData[item.adv_id];
@@ -618,15 +706,17 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                               })()}
                             </div>
                             {/* 详细工具提示 */}
-                            <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                              <div className="font-medium mb-2">{epcPeriod}天EPC趋势</div>
-                              {itemEpcData.labels.map((label, idx) => (
-                                <div key={idx} className="flex justify-between gap-4">
-                                  <span>{label}:</span>
-                                  <span className="text-blue-300">{itemEpcData.history![idx]} EPC</span>
-                                </div>
-                              ))}
-                            </div>
+                            {hoveredCell && hoveredCell.row === rowIdx && hoveredCell.col === 7 && (
+                              <div className="absolute -top-32 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs p-3 rounded-lg opacity-100 transition-opacity duration-200 pointer-events-auto whitespace-nowrap z-10">
+                                <div className="font-medium mb-2">{epcPeriod}天EPC趋势</div>
+                                {itemEpcData.labels.map((label, idx) => (
+                                  <div key={idx} className="flex justify-between gap-4">
+                                    <span>{label}:</span>
+                                    <span className="text-blue-300">{itemEpcData.history![idx]} EPC</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         );
                       }
@@ -663,32 +753,35 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               
               {/* 页码显示 */}
               <div className="flex items-center space-x-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
+                {(() => {
+                  let start = 1;
+                  let end = totalPages;
+                  if (totalPages > 5) {
+                    if (currentPage <= 3) {
+                      start = 1;
+                      end = 5;
+                    } else if (currentPage >= totalPages - 2) {
+                      start = totalPages - 4;
+                      end = totalPages;
+                    } else {
+                      start = currentPage - 2;
+                      end = currentPage + 2;
+                    }
                   }
-                  
-                  return (
+                  const pages = [];
+                  for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                  }
+                  return pages.map((page) => (
                     <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`px-3 py-1 text-sm border rounded-md ${
-                        currentPage === pageNum
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 hover:bg-gray-50'
-                      }`}
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-1 text-sm border rounded-md ${currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 hover:bg-gray-50'}`}
                     >
-                      {pageNum}
+                      {page}
                     </button>
-                  );
-                })}
+                  ));
+                })()}
               </div>
               
               <button
