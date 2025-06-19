@@ -194,12 +194,12 @@ export default function Home() {
             >
               数据监控
             </Link>
-            <button
-              onClick={() => window.location.href = '/logs'}
+            <Link
+              href="/logs"
               className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium cursor-pointer"
             >
               抓取日志
-            </button>
+            </Link>
           </nav>
         </div>
         

@@ -101,72 +101,74 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
     return 'flat';                    // 变化在±5%以内视为平稳
   };
 
-  // 当数据变化时，获取所有数据的EPC趋势
+  // 当数据变化或筛选变化时，获取EPC趋势
   useEffect(() => {
-    const fetchAllEpcData = async () => {
+    const fetchEpcData = async () => {
       if (processedData.length === 0 || !selectedDate) return;
-      
-      // 获取所有需要加载的广告商ID
-      const idsToFetch = processedData
-        .map(item => item.adv_id)
-        .filter(id => !epcData[id] && !loadingEpc[id]);
+      setEpcData({});
+      setLoadingEpc({});
 
-      if (idsToFetch.length === 0) return;
-
-      // 更新加载状态
-      setLoadingEpc(prev => {
-        const newLoading = { ...prev };
-        idsToFetch.forEach(id => { newLoading[id] = true; });
-        return newLoading;
-      });
-
-      try {
-        // 分批获取数据，每批50个
-        const batchSize = 50;
-        const batches = [];
-        for (let i = 0; i < idsToFetch.length; i += batchSize) {
-          batches.push(idsToFetch.slice(i, i + batchSize));
-        }
-
-        // 并发请求所有批次
-        const results = await Promise.all(
-          batches.map(async (batch) => {
-            const response = await fetch(`/api/epc`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                adv_ids: batch,
-                period: epcPeriod,
-                endDate: selectedDate
-              }),
-            });
-
-            if (!response.ok) {
-              throw new Error('获取EPC数据失败');
-            }
-
-            const result = await response.json();
-            return result.success ? result.data : {};
-          })
-        );
-
-        // 合并所有批次的结果
-        const combinedResults = results.reduce((acc, curr) => ({ ...acc, ...curr }), {});
-        setEpcData(prev => ({ ...prev, ...combinedResults }));
-
-      } catch (error) {
-        console.error('[DataTable] 获取EPC数据失败:', error);
-      } finally {
+      if (epcTrendFilter === 'all') {
+        // 只查当前页
+        const idsToFetch = paginatedData
+          .map(item => item.adv_id)
+          .filter(id => !epcData[id] && !loadingEpc[id]);
+        if (idsToFetch.length === 0) return;
         setLoadingEpc(prev => {
           const newLoading = { ...prev };
-          idsToFetch.forEach(id => { delete newLoading[id]; });
+          idsToFetch.forEach(id => { newLoading[id] = true; });
           return newLoading;
         });
+        try {
+          const response = await fetch(`/api/epc`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              adv_ids: idsToFetch,
+              period: epcPeriod,
+              endDate: selectedDate
+            }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            setEpcData(prev => ({ ...prev, ...result.data }));
+          }
+        } catch (error) {
+          console.error('[DataTable] 获取EPC数据失败:', error);
+        } finally {
+          setLoadingEpc(prev => {
+            const newLoading = { ...prev };
+            idsToFetch.forEach(id => { delete newLoading[id]; });
+            return newLoading;
+          });
+        }
+      } else {
+        // 筛选时查全量
+        setLoadingEpc({ all: true });
+        try {
+          const response = await fetch(`/api/epc`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              period: epcPeriod,
+              endDate: selectedDate,
+              trend: epcTrendFilter
+            }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            setEpcData(result.data);
+          }
+        } catch (error) {
+          console.error('[DataTable] 获取EPC数据失败:', error);
+        } finally {
+          setLoadingEpc({});
+        }
       }
     };
-
-    fetchAllEpcData();
-  }, [processedData, epcPeriod, selectedDate]);
+    fetchEpcData();
+    // eslint-disable-next-line
+  }, [processedData, epcPeriod, selectedDate, epcTrendFilter, currentPage]);
 
   // 过滤数据
   const filteredByTrend = useMemo(() => {

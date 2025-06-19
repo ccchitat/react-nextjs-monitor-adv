@@ -80,3 +80,22 @@ model CrawlLog {
   
   @@map("crawl_logs")
 }
+
+model EPCTrendSnapshot {
+  id            Int      @id @default(autoincrement())
+  advId         String
+  date          DateTime
+  epc7History   Json
+  epc7Labels    Json
+  epc7Trend     String
+  epc14History  Json
+  epc14Labels   Json
+  epc14Trend    String
+  epc30History  Json
+  epc30Labels   Json
+  epc30Trend    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([advId, date])
+}

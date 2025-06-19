@@ -107,6 +107,13 @@ export class DatabaseService {
               },
             });
 
+            // 3. 同步写入EPC趋势快照（7/14/30天）
+            const advId = data.adv_id;
+            const periods = [7, 14, 30];
+            for (const period of periods) {
+              await DatabaseService.getOrCreateEpcTrendSnapshot(advId, snapshotDate, period);
+            }
+
             // 注意：不再生成虚假的EPC历史数据
             // EPC历史数据将基于真实的每日快照数据动态构建
 
@@ -390,5 +397,86 @@ export class DatabaseService {
       where: { id },
       data,
     });
+  }
+
+  /**
+   * 获取所有广告商ID
+   */
+  static async getAllAdvertiserIds(): Promise<string[]> {
+    const all = await prisma.advertiser.findMany({ select: { advId: true } });
+    return all.map((a: any) => a.advId);
+  }
+
+  /**
+   * 获取或自动补全EPC趋势快照
+   */
+  static async getOrCreateEpcTrendSnapshot(advId: string, date: Date, period: number) {
+    // 1. 查快照表
+    const periodKey = `epc${period}History`;
+    const labelKey = `epc${period}Labels`;
+    const trendKey = `epc${period}Trend`;
+    let snapshot = await prisma.ePCTrendSnapshot.findUnique({
+      where: { advId_date: { advId, date } }
+    });
+    // 2. 没有快照，自动计算
+    const startDate = new Date(date);
+    startDate.setDate(startDate.getDate() - period + 1);
+    const historyRows = await prisma.advertiserSnapshot.findMany({
+      where: {
+        advertiser: { advId },
+        snapshotDate: {
+          gte: startDate,
+          lte: date,
+        },
+      },
+      orderBy: { snapshotDate: 'asc' },
+      select: { epc30: true, snapshotDate: true },
+    });
+    // 补0填满周期
+    const epcHistory: number[] = [];
+    const labels: string[] = [];
+    for (let i = 0; i < period; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      const snap = historyRows.find((h: any) => h.snapshotDate.toDateString() === d.toDateString());
+      epcHistory.push(snap ? Number(snap.epc30 ?? 0) : 0);
+      labels.push(`${d.getMonth() + 1}-${d.getDate()}`);
+    }
+    // 计算趋势
+    const trend = (() => {
+      if (!epcHistory || epcHistory.length < 2) return 'flat';
+      const valid = epcHistory.filter(x => typeof x === 'number' && !isNaN(x));
+      if (valid.length < 2) return 'flat';
+      const first = valid[0];
+      const last = valid[valid.length - 1];
+      const change = ((last - first) / (first || 1)) * 100;
+      if (change > 5) return 'up';
+      if (change < -5) return 'down';
+      return 'flat';
+    })();
+    // 3. upsert时补全所有字段
+    const periods = [7, 14, 30];
+    const trendData: any = {};
+    for (const p of periods) {
+      if (p === period) {
+        trendData[`epc${p}History`] = epcHistory;
+        trendData[`epc${p}Labels`] = labels;
+        trendData[`epc${p}Trend`] = trend;
+      } else if (snapshot && snapshot[`epc${p}History`]) {
+        trendData[`epc${p}History`] = snapshot[`epc${p}History`];
+        trendData[`epc${p}Labels`] = snapshot[`epc${p}Labels`];
+        trendData[`epc${p}Trend`] = snapshot[`epc${p}Trend`];
+      } else {
+        trendData[`epc${p}History`] = [];
+        trendData[`epc${p}Labels`] = [];
+        trendData[`epc${p}Trend`] = 'flat';
+      }
+    }
+    await prisma.ePCTrendSnapshot.upsert({
+      where: { advId_date: { advId, date } },
+      update: trendData,
+      create: { advId, date, ...trendData },
+    });
+    return { history: epcHistory, labels };
   }
 } 
