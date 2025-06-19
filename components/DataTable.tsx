@@ -30,18 +30,19 @@ interface DataTableProps {
   data: Advertiser[];
   loading: boolean;
   onEpcPeriodChange?: (period: EPCPeriod) => void;
+  onExportDataChange?: (data: Advertiser[]) => void;
 }
 
 type EPCPeriod = 7 | 14 | 30;
 
-export default function DataTable({ data, loading, onEpcPeriodChange }: DataTableProps) {
+export default function DataTable({ data, loading, onEpcPeriodChange, onExportDataChange }: DataTableProps) {
   const [sortField, setSortField] = useState<keyof Advertiser>('adv_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [processedData, setProcessedData] = useState<Advertiser[]>([]);
   const [epcPeriod, setEpcPeriod] = useState<EPCPeriod>(7);
-  const [epcTrendFilter, setEpcTrendFilter] = useState<'all' | 'up' | 'down'>('all');
+  const [epcTrendFilter, setEpcTrendFilter] = useState<'all' | 'up' | 'down' | 'flat'>('all');
   const itemsPerPage = 20;
 
   // 处理数据，直接使用数据库返回的真实数据
@@ -109,11 +110,30 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
   });
 
   // 搜索过滤
-  const filteredData = sortedData.filter(item =>
+  const searchFilteredData = sortedData.filter(item =>
     Object.values(item).some(value =>
       String(value).toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
+
+  // EPC趋势筛选
+  const filteredData = searchFilteredData.filter(item => {
+    if (epcTrendFilter === 'all') return true;
+    
+    if (!item.epc_history || item.epc_history.length === 0) {
+      return epcTrendFilter === 'flat';
+    }
+    
+    const trend = checkEpcTrend(item.epc_history);
+    return trend === epcTrendFilter;
+  });
+
+  // 通知父组件当前可导出的数据
+  useEffect(() => {
+    if (onExportDataChange) {
+      onExportDataChange(filteredData);
+    }
+  }, [filteredData, onExportDataChange]);
 
   // 分页
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -174,7 +194,7 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
   };
 
   // 处理EPC趋势筛选变化
-  const handleEpcTrendFilterChange = (filter: 'all' | 'up' | 'down') => {
+  const handleEpcTrendFilterChange = (filter: 'all' | 'up' | 'down' | 'flat') => {
     setEpcTrendFilter(filter);
     setCurrentPage(1); // 重置到第一页
   };
@@ -278,6 +298,16 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                 >
                   下降
                 </button>
+                <button
+                  onClick={() => handleEpcTrendFilterChange('flat')}
+                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                    epcTrendFilter === 'flat'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  平稳
+                </button>
               </div>
             </div>
             
@@ -289,104 +319,69 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
       </div>
 
       {/* 表格 */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <table className="min-w-full divide-y divide-gray-300" style={{ tableLayout: 'fixed' }}>
           <thead className="bg-gray-50">
             <tr>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-48"
-                onClick={() => handleSort('adv_name')}
-              >
-                <div className="flex items-center">
-                  <span>广告商名称</span>
-                  <span className="ml-1">{getSortIcon('adv_name')}</span>
+              <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-64">
+                广告商信息
+              </th>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                分类
+              </th>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                类型
+              </th>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                地区
+              </th>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('monthly_visits')}>
+                <div className="flex items-center justify-center gap-1">
+                  月访问量
+                  {getSortIcon('monthly_visits')}
                 </div>
               </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-32"
-                onClick={() => handleSort('adv_category')}
-              >
-                <div className="flex items-center">
-                  <span>分类</span>
-                  <span className="ml-1">{getSortIcon('adv_category')}</span>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('30_epc')}>
+                <div className="flex items-center justify-center gap-1">
+                  30天EPC
+                  {getSortIcon('30_epc')}
                 </div>
               </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-32"
-                onClick={() => handleSort('adv_type')}
-              >
-                <div className="flex items-center">
-                  <span>类型</span>
-                  <span className="ml-1">{getSortIcon('adv_type')}</span>
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('30_rate')}>
+                <div className="flex items-center justify-center gap-1">
+                  30天转化率
+                  {getSortIcon('30_rate')}
                 </div>
               </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-32"
-                onClick={() => handleSort('mailing_region')}
-              >
-                <div className="flex items-center">
-                  <span>地区</span>
-                  <span className="ml-1">{getSortIcon('mailing_region')}</span>
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-32"
-                onClick={() => handleSort('monthly_visits')}
-              >
-                <div className="flex items-center">
-                  <span>月访问量</span>
-                  <span className="ml-1">{getSortIcon('monthly_visits')}</span>
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-28"
-                onClick={() => handleSort('30_epc')}
-              >
-                <div className="flex items-center">
-                  <span>30天EPC</span>
-                  <span className="ml-1">{getSortIcon('30_epc')}</span>
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-32"
-                onClick={() => handleSort('30_rate')}
-              >
-                <div className="flex items-center">
-                  <span>30天转化率</span>
-                  <span className="ml-1">{getSortIcon('30_rate')}</span>
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48"
-              >
+              <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-48">
                 <span>{epcPeriod}天EPC趋势</span>
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedData.map((item, index) => (
-              <tr key={item.adv_id} className="hover:bg-gray-50 group h-20">
-                <td className="px-4 py-4 h-20">
-                  <div className="flex items-start h-full">
+              <tr key={item.adv_id} className="hover:bg-gray-50 group" style={{ height: '80px' }}>
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center h-full">
                     {item.adv_logo && (
                       <img 
                         src={item.adv_logo} 
                         alt={item.adv_name}
-                        className="h-8 w-8 rounded-full mr-3 flex-shrink-0 mt-1"
+                        className="h-8 w-8 rounded-full mr-3 flex-shrink-0"
                         onError={(e) => {
                           e.currentTarget.style.display = 'none';
                         }}
                       />
                     )}
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 flex flex-col justify-center">
                       <div 
-                        className="text-sm font-medium text-gray-900 break-words cursor-help"
+                        className="text-sm font-medium text-gray-900 break-words cursor-help leading-tight"
                         title={needsTruncation(item.adv_name, 30) ? item.adv_name : undefined}
                       >
                         {formatText(item.adv_name, 30)}
                       </div>
                       <div 
-                        className="text-sm text-gray-500 break-words cursor-help"
+                        className="text-sm text-gray-500 break-words cursor-help leading-tight mt-1"
                         title={needsTruncation(item.adv_id, 20) ? item.adv_id : undefined}
                       >
                         ID: {formatText(item.adv_id, 20)}
@@ -394,58 +389,70 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
-                  <div 
-                    className="text-sm text-gray-900 break-words cursor-help"
-                    title={needsTruncation(item.adv_category, 20) ? item.adv_category : undefined}
-                  >
-                    {formatText(item.adv_category || '-', 20)}
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center justify-center h-full">
+                    <div 
+                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      title={needsTruncation(item.adv_category, 20) ? item.adv_category : undefined}
+                    >
+                      {formatText(item.adv_category || '-', 20)}
+                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
-                  <div 
-                    className="text-sm text-gray-900 break-words cursor-help"
-                    title={needsTruncation(item.adv_type, 20) ? item.adv_type : undefined}
-                  >
-                    {formatText(item.adv_type || '-', 20)}
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center justify-center h-full">
+                    <div 
+                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      title={needsTruncation(item.adv_type, 20) ? item.adv_type : undefined}
+                    >
+                      {formatText(item.adv_type || '-', 20)}
+                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
-                  <div 
-                    className="text-sm text-gray-900 break-words cursor-help"
-                    title={needsTruncation(item.mailing_region, 20) ? item.mailing_region : undefined}
-                  >
-                    {formatText(item.mailing_region || '-', 20)}
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center justify-center h-full">
+                    <div 
+                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      title={needsTruncation(item.mailing_region, 20) ? item.mailing_region : undefined}
+                    >
+                      {formatText(item.mailing_region || '-', 20)}
+                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
-                  <div 
-                    className="text-sm text-gray-900 break-words cursor-help"
-                    title={needsTruncation(item.monthly_visits, 15) ? item.monthly_visits : undefined}
-                  >
-                    {item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center justify-center h-full">
+                    <div 
+                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      title={needsTruncation(item.monthly_visits, 15) ? item.monthly_visits : undefined}
+                    >
+                      {item.monthly_visits ? formatNumber(item.monthly_visits) : '-'}
+                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
-                  <div 
-                    className="text-sm text-gray-900 break-words cursor-help"
-                    title={String(item['30_epc'] || '-')}
-                  >
-                    {item['30_epc'] || '-'}
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center justify-center h-full">
+                    <div 
+                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      title={String(item['30_epc'] || '-')}
+                    >
+                      {item['30_epc'] || '-'}
+                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
-                  <div 
-                    className="text-sm text-gray-900 break-words cursor-help"
-                    title={String(item['30_rate'] || '-')}
-                  >
-                    {item['30_rate'] || '-'}
+                <td className="px-4 py-4" style={{ height: '80px' }}>
+                  <div className="flex items-center justify-center h-full">
+                    <div 
+                      className="text-sm text-gray-900 break-words cursor-help text-center"
+                      title={String(item['30_rate'] || '-')}
+                    >
+                      {item['30_rate'] || '-'}
+                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-4 h-20">
+                <td className="px-4 py-4" style={{ height: '80px' }}>
                   <div className="flex items-center justify-center h-full">
                     {item.epc_history && item.date_labels && item.epc_history.length > 0 ? (
-                      <div className="group relative">
+                      <div className="group relative flex items-center justify-center">
                         <div className="flex items-center gap-2">
                           <EPCChart 
                             data={item.epc_history} 
@@ -557,6 +564,14 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                 })}
               </div>
               
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                下一页
+              </button>
+              
               {/* 跳页功能 */}
               <div className="flex items-center space-x-2 ml-4">
                 <span className="text-sm text-gray-600">跳转到:</span>
@@ -576,9 +591,10 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                     }
                   }}
                 />
+                <span className="text-sm text-gray-500">/ {totalPages}</span>
                 <button
                   onClick={(e) => {
-                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                    const input = e.currentTarget.previousElementSibling?.previousElementSibling as HTMLInputElement;
                     const targetPage = parseInt(input.value);
                     if (targetPage >= 1 && targetPage <= totalPages) {
                       setCurrentPage(targetPage);
@@ -590,14 +606,6 @@ export default function DataTable({ data, loading, onEpcPeriodChange }: DataTabl
                   跳转
                 </button>
               </div>
-              
-              <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                下一页
-              </button>
             </div>
           </div>
         </div>

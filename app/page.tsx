@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import DataTable from '@/components/DataTable';
 import Link from 'next/link';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 interface Advertiser {
   adv_logo: string;
@@ -33,6 +35,7 @@ export default function Home() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [epcTimeRange, setEpcTimeRange] = useState<number>(7);
+  const [exportData, setExportData] = useState<Advertiser[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // 获取今天的日期作为默认值
@@ -181,7 +184,7 @@ export default function Home() {
     <main className="min-h-screen p-8 bg-gray-50">
       <div className="max-w-7xl mx-auto">
         {/* 导航栏 */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-8 relative z-10">
           <h1 className="text-3xl font-bold text-gray-900">广告商数据监控</h1>
           <nav className="flex space-x-4">
             <Link 
@@ -190,12 +193,12 @@ export default function Home() {
             >
               数据监控
             </Link>
-            <Link 
-              href="/logs"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+            <button
+              onClick={() => window.location.href = '/logs'}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium cursor-pointer"
             >
               抓取日志
-            </Link>
+            </button>
           </nav>
         </div>
         
@@ -250,6 +253,108 @@ export default function Home() {
                 )}
               </>
             )}
+            
+            {/* 导出Excel按钮 */}
+            <button
+              onClick={() => {
+                try {
+                  console.log('开始导出Excel，数据条数:', exportData.length);
+                  
+                  // 检查数据
+                  if (!exportData || exportData.length === 0) {
+                    alert('没有可导出的数据');
+                    return;
+                  }
+
+                  // 生成默认文件名
+                  const now = new Date();
+                  const dateStr = now.toISOString().split('T')[0];
+                  const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+                  const defaultFileName = `广告商数据_${dateStr}_${timeStr}.xlsx`;
+                  
+                  // 让用户自定义文件名
+                  const customFileName = prompt(
+                    `请输入文件名（不包含扩展名）:\n\n默认文件名: ${defaultFileName.replace('.xlsx', '')}\n\n提示：文件将下载到您的默认下载目录`,
+                    defaultFileName.replace('.xlsx', '')
+                  );
+                  
+                  if (!customFileName) {
+                    console.log('用户取消了导出');
+                    return;
+                  }
+                  
+                  const fileName = customFileName.endsWith('.xlsx') ? customFileName : `${customFileName}.xlsx`;
+
+                  // 准备导出数据
+                  console.log('正在准备导出数据...');
+                  const exportDataForExcel = exportData.map(item => ({
+                    '广告商名称': item.adv_name || '',
+                    '广告商ID': item.adv_id || '',
+                    '分类': item.adv_category || '-',
+                    '类型': item.adv_type || '-',
+                    '地区': item.mailing_region || '-',
+                    '月访问量': item.monthly_visits || '-',
+                    '30天EPC': item['30_epc'] || '-',
+                    '30天转化率': item['30_rate'] || '-',
+                    '审批类型': item.approval_type || '-',
+                    '加入状态': item.join_status || '-',
+                    '联盟BA': item.aff_ba || '-',
+                    'RD': item.rd || '-'
+                  }));
+
+                  console.log('导出数据准备完成，条数:', exportDataForExcel.length);
+
+                  // 创建工作簿
+                  console.log('正在创建工作簿...');
+                  const wb = XLSX.utils.book_new();
+                  const ws = XLSX.utils.json_to_sheet(exportDataForExcel);
+
+                  // 设置列宽
+                  const colWidths = [
+                    { wch: 20 }, // 广告商名称
+                    { wch: 15 }, // 广告商ID
+                    { wch: 12 }, // 分类
+                    { wch: 12 }, // 类型
+                    { wch: 12 }, // 地区
+                    { wch: 12 }, // 月访问量
+                    { wch: 12 }, // 30天EPC
+                    { wch: 12 }, // 30天转化率
+                    { wch: 12 }, // 审批类型
+                    { wch: 12 }, // 加入状态
+                    { wch: 12 }, // 联盟BA
+                    { wch: 10 }  // RD
+                  ];
+                  ws['!cols'] = colWidths;
+
+                  // 添加工作表到工作簿
+                  XLSX.utils.book_append_sheet(wb, ws, '广告商数据');
+
+                  console.log('正在生成Excel文件...');
+                  // 导出文件
+                  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                  
+                  console.log('正在下载文件:', fileName);
+                  saveAs(blob, fileName);
+
+                  console.log(`成功导出 ${exportDataForExcel.length} 条数据到 ${fileName}`);
+                  
+                  // 显示成功消息，包含下载位置提示
+                  alert(`✅ 导出成功！\n\n📊 数据条数: ${exportDataForExcel.length}\n📁 文件名: ${fileName}\n📂 下载位置: 您的默认下载目录\n\n💡 提示：您可以在浏览器设置中更改默认下载目录`);
+                } catch (error) {
+                  console.error('导出Excel失败，详细错误:', error);
+                  console.error('错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息');
+                  alert(`❌ 导出失败: ${error instanceof Error ? error.message : '未知错误'}，请稍后重试`);
+                }
+              }}
+              disabled={exportData.length === 0}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              导出Excel
+            </button>
           </div>
         </div>
 
@@ -284,6 +389,7 @@ export default function Home() {
           data={advertisers} 
           loading={loading} 
           onEpcPeriodChange={handleEpcPeriodChange}
+          onExportDataChange={setExportData}
         />
       </div>
     </main>

@@ -29,18 +29,47 @@ export default function LogsPage() {
   const fetchLogs = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/logs');
+      setError(null);
+      
+      console.log('开始获取日志数据...');
+      
+      // 减少超时时间到3秒
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3秒超时
+      
+      const response = await fetch('/api/logs', {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log('API响应状态:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('API返回数据:', data);
       
       if (data.success) {
         setLogs(data.logs);
+        console.log('设置日志数据成功，条数:', data.logs.length);
       } else {
         setError(data.message || '获取日志失败');
       }
-    } catch (err) {
-      setError('网络错误，请稍后重试');
+    } catch (err: any) {
+      console.error('获取日志错误:', err);
+      if (err.name === 'AbortError') {
+        setError('请求超时，请检查数据库连接');
+      } else {
+        setError('网络错误或数据库连接失败，请稍后重试');
+      }
+      // 即使出错也设置空数组，让页面显示
+      setLogs([]);
     } finally {
       setLoading(false);
+      console.log('加载完成');
     }
   };
 
