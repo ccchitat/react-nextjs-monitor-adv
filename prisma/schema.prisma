@@ -10,6 +10,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 定义趋势类型枚举
+enum ETrendType {
+  UPWARD    // 上升趋势
+  DOWNWARD  // 下降趋势
+  STABLE    // 平稳趋势
+  VOLATILE  // 波动趋势
+  UNKNOWN   // 未知或数据不足
+}
+
 model Advertiser {
   id                BigInt   @id @default(autoincrement())
   advId             String   @unique @map("adv_id")
@@ -18,51 +27,25 @@ model Advertiser {
   advCategory       String?  @map("adv_category")
   advType           String?  @map("adv_type")
   mailingRegion     String?  @map("mailing_region")
+  monthlyVisits     String?  @map("monthly_visits")
+  rd                String?  @map("rd")
+  epc30Day          String?  @map("30_epc")
+  rate30Day         String?  @map("30_rate")
+  affBa             String?  @map("aff_ba")
+  affBaUnit         String?  @map("aff_ba_unit")
+  affBaText         String?  @map("aff_ba_text")
   approvalType      String?  @map("approval_type")
   approvalTypeText  String?  @map("approval_type_text")
+  joinStatus        String?  @map("join_status")
+  joinStatusText    String?  @map("join_status_text")
   advLogo           String?  @map("adv_logo")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
   
-  snapshots AdvertiserSnapshot[]
-  epcHistory EpcHistory[]
+  dailyEpc DailyEpc[]
+  entityTrend EntityTrend?
   
   @@map("advertisers")
-}
-
-model AdvertiserSnapshot {
-  id              BigInt   @id @default(autoincrement())
-  advertiserId    BigInt   @map("advertiser_id")
-  snapshotDate    DateTime @map("snapshot_date")
-  monthlyVisits   String?  @map("monthly_visits")
-  rd              String?
-  epc30           Decimal? @map("epc_30") @db.Decimal(10, 4)
-  rate30          Decimal? @map("rate_30") @db.Decimal(10, 4)
-  affBa           String?  @map("aff_ba")
-  affBaUnit       String?  @map("aff_ba_unit")
-  affBaText       String?  @map("aff_ba_text")
-  joinStatus      String?  @map("join_status")
-  joinStatusText  String?  @map("join_status_text")
-  createdAt       DateTime @default(now()) @map("created_at")
-  
-  advertiser Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
-  
-  @@unique([advertiserId, snapshotDate])
-  @@map("advertiser_snapshots")
-}
-
-model EpcHistory {
-  id            BigInt   @id @default(autoincrement())
-  advertiserId  BigInt   @map("advertiser_id")
-  snapshotDate  DateTime @map("snapshot_date")
-  epcValue      Decimal  @map("epc_value") @db.Decimal(10, 4)
-  dayOffset     Int      @map("day_offset")
-  createdAt     DateTime @default(now()) @map("created_at")
-  
-  advertiser Advertiser @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
-  
-  @@unique([advertiserId, snapshotDate, dayOffset])
-  @@map("epc_history")
 }
 
 model CrawlLog {
@@ -81,21 +64,45 @@ model CrawlLog {
   @@map("crawl_logs")
 }
 
-model EPCTrendSnapshot {
-  id            Int      @id @default(autoincrement())
-  advId         String
-  date          DateTime
-  epc7History   Json
-  epc7Labels    Json
-  epc7Trend     String
-  epc14History  Json
-  epc14Labels   Json
-  epc14Trend    String
-  epc30History  Json
-  epc30Labels   Json
-  epc30Trend    String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+// 每日 EPC 原始数据表
+model DailyEpc {
+  id        BigInt    @id @default(autoincrement())
+  entityId  BigInt    @map("entity_id") // 对应 Advertiser 的 id
+  date      DateTime  @db.Date
+  epcValue  Decimal   @map("epc_value") @db.Decimal(10, 4)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
-  @@unique([advId, date])
+  advertiser Advertiser @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, date])
+  @@index([entityId, date])
+  @@map("daily_epc")
+}
+
+// 实体趋势预计算表
+model EntityTrend {
+  id                    BigInt      @id @default(autoincrement())
+  entityId             BigInt      @unique @map("entity_id") // 对应 Advertiser 的 id
+  
+  // 近7天趋势数据
+  last7DayAvgEPC       Decimal?    @map("last_7_day_avg_epc") @db.Decimal(10, 4)
+  epcSlope7Day         Decimal?    @map("epc_slope_7_day") @db.Decimal(10, 4)
+  epcTrendCategory7Day ETrendType? @map("epc_trend_category_7_day")
+  
+  // 近14天趋势数据
+  last14DayAvgEPC      Decimal?    @map("last_14_day_avg_epc") @db.Decimal(10, 4)
+  epcSlope14Day        Decimal?    @map("epc_slope_14_day") @db.Decimal(10, 4)
+  epcTrendCategory14Day ETrendType? @map("epc_trend_category_14_day")
+  
+  // 近30天趋势数据
+  last30DayAvgEPC      Decimal?    @map("last_30_day_avg_epc") @db.Decimal(10, 4)
+  epcSlope30Day        Decimal?    @map("epc_slope_30_day") @db.Decimal(10, 4)
+  epcTrendCategory30Day ETrendType? @map("epc_trend_category_30_day")
+  
+  lastCalculatedAt     DateTime    @default(now()) @updatedAt @map("last_calculated_at")
+  
+  advertiser Advertiser @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@map("entity_trends")
 }

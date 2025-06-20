@@ -91,28 +91,27 @@ pnpm dev
 - `created_at`: 创建时间
 - `updated_at`: 更新时间
 
-#### 2. advertiser_snapshots (每日数据快照)
+#### 2. daily_epc (每日EPC数据)
 - `id`: 主键
-- `advertiser_id`: 广告商ID (外键)
-- `snapshot_date`: 快照日期
-- `monthly_visits`: 月访问量
-- `rd`: RD值
-- `epc_30`: 30天EPC
-- `rate_30`: 30天转化率
-- `aff_ba`: 联盟余额
-- `aff_ba_unit`: 余额单位
-- `aff_ba_text`: 余额文本
-- `join_status`: 加入状态
-- `join_status_text`: 状态文本
-- `created_at`: 创建时间
-
-#### 3. epc_history (EPC历史数据)
-- `id`: 主键
-- `advertiser_id`: 广告商ID (外键)
-- `snapshot_date`: 快照日期
+- `entity_id`: 实体ID (外键)
+- `date`: 日期
 - `epc_value`: EPC值
-- `day_offset`: 天数偏移
 - `created_at`: 创建时间
+- `updated_at`: 更新时间
+
+#### 3. entity_trends (趋势分析数据)
+- `id`: 主键
+- `entity_id`: 实体ID (外键)
+- `last_7_day_avg_epc`: 7天平均EPC
+- `epc_slope_7_day`: 7天趋势斜率
+- `epc_trend_category_7_day`: 7天趋势类型
+- `last_14_day_avg_epc`: 14天平均EPC
+- `epc_slope_14_day`: 14天趋势斜率
+- `epc_trend_category_14_day`: 14天趋势类型
+- `last_30_day_avg_epc`: 30天平均EPC
+- `epc_slope_30_day`: 30天趋势斜率
+- `epc_trend_category_30_day`: 30天趋势类型
+- `last_calculated_at`: 最后计算时间
 
 #### 4. crawl_logs (抓取日志)
 - `id`: 主键
@@ -141,10 +140,23 @@ Content-Type: application/json
 
 ### 2. 数据查询
 ```
-GET /api/data?date=2024-01-15&timeRange=7
+GET /api/data?date=2024-01-15
 ```
 
-### 3. 抓取日志
+### 3. EPC数据和趋势分析
+```
+POST /api/epc
+Content-Type: application/json
+
+{
+  "adv_ids": ["ADV001", "ADV002"],
+  "period": 7,
+  "endDate": "2024-01-15",
+  "trend": "UPWARD"  // 可选: UPWARD, DOWNWARD, STABLE
+}
+```
+
+### 4. 抓取日志
 ```
 GET /api/logs?limit=10
 ```
@@ -166,8 +178,10 @@ GET /api/logs?limit=10
 - **排序**: 点击列标题进行排序
 - **搜索**: 使用搜索框过滤数据
 - **分页**: 支持分页浏览
-- **EPC图表**: 每行显示EPC趋势图
+- **EPC趋势图**: 每行显示EPC趋势折线图
 - **时间范围**: 可选择7/14/30天的EPC数据
+- **趋势筛选**: 按上升、下降、平稳趋势筛选广告商
+- **数据导出**: 支持导出Excel格式数据
 
 ### 抓取日志
 - 查看历史抓取记录
