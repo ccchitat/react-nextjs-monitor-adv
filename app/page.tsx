@@ -36,7 +36,11 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [epcTimeRange, setEpcTimeRange] = useState<number>(7);
   const [exportData, setExportData] = useState<Advertiser[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [jumpPage, setJumpPage] = useState('');
 
   // 获取今天的日期作为默认值
   useEffect(() => {
@@ -44,24 +48,22 @@ export default function Home() {
     setSelectedDate(today);
   }, []);
 
-  // 从数据库加载数据
-  const loadDataFromDatabase = async () => {
+  // 从数据库加载数据（支持分页）
+  const loadDataFromDatabase = async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
       setAdvertisers([]);
-      
-      console.log(`[page.tsx] 正在从数据库加载数据，日期: ${selectedDate}`);
-      const response = await fetch(`/api/data?date=${selectedDate || new Date().toISOString().split('T')[0]}`);
-      
+      setCurrentPage(page);
+      console.log(`[page.tsx] 正在从数据库加载数据，日期: ${selectedDate}，页码: ${page}`);
+      const response = await fetch(`/api/data?date=${selectedDate || new Date().toISOString().split('T')[0]}&page=${page}&pageSize=${pageSize}`);
       if (!response.ok) {
         throw new Error('加载数据失败');
       }
-      
       const result = await response.json();
-      
       if (result.success) {
         setAdvertisers(result.data || []);
+        setTotal(result.total || 0);
         if (result.data && result.data.length > 0) {
           console.log(`[page.tsx] 成功从数据库加载了 ${result.data.length} 条基础数据`);
         } else {
@@ -77,12 +79,12 @@ export default function Home() {
     }
   };
 
-  // 页面加载时自动加载数据
+  // 页面加载或日期变化时自动加载第一页
   useEffect(() => {
     if (selectedDate) {
-      loadDataFromDatabase();
+      loadDataFromDatabase(1);
     }
-  }, [selectedDate]);
+  }, [selectedDate, pageSize]);
 
   const fetchData = async () => {
     try {
@@ -179,6 +181,29 @@ export default function Home() {
   // 处理EPC时间范围变化
   const handleEpcPeriodChange = (period: number) => {
     setEpcTimeRange(period);
+  };
+
+  // 处理分页切换
+  const handlePageChange = (page: number) => {
+    loadDataFromDatabase(page);
+  };
+
+  // 处理每页条数变化
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  function getPageList(current: number, total: number) {
+    if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
+    return [1, 2, 3, 4, '...', total];
+  }
+  const pageList = getPageList(currentPage, totalPages);
+  const handleJump = () => {
+    const page = Math.max(1, Math.min(totalPages, Number(jumpPage)));
+    if (!isNaN(page)) handlePageChange(page);
+    setJumpPage('');
   };
 
   return (
@@ -394,6 +419,46 @@ export default function Home() {
           onExportDataChange={setExportData}
           selectedDate={selectedDate}
         />
+        {/* 数字分页控件+跳转 */}
+        <div className="flex justify-center items-center mt-6 gap-2">
+          {pageList.map((p, idx) =>
+            p === '...'
+              ? <span key={idx} className="px-2 text-gray-400">...</span>
+              : <button
+                  key={p}
+                  onClick={() => handlePageChange(Number(p))}
+                  disabled={p === currentPage || loading}
+                  className={`px-3 py-1 rounded ${p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-blue-100'} transition-colors`}
+                >{p}</button>
+          )}
+          <span className="ml-4 text-gray-600">共 {totalPages} 页</span>
+          <input
+            type="number"
+            min={1}
+            max={totalPages}
+            value={jumpPage}
+            onChange={e => setJumpPage(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleJump(); }}
+            className="w-16 px-2 py-1 border rounded ml-2"
+            placeholder="跳转页"
+          />
+          <button
+            onClick={handleJump}
+            className="px-2 py-1 bg-blue-500 text-white rounded ml-1"
+            disabled={!jumpPage || isNaN(Number(jumpPage)) || Number(jumpPage) < 1 || Number(jumpPage) > totalPages}
+          >
+            跳转
+          </button>
+          <select
+            value={pageSize}
+            onChange={e => handlePageSizeChange(Number(e.target.value))}
+            className="ml-4 px-2 py-1 border rounded"
+          >
+            {[5, 10, 20, 50, 100].map(size => (
+              <option key={size} value={size}>{size}条/页</option>
+            ))}
+          </select>
+        </div>
       </div>
     </main>
   );

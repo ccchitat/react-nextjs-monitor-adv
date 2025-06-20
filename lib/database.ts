@@ -131,18 +131,15 @@ export class DatabaseService {
   /**
    * 获取指定日期的广告商数据
    */
-  static async getAdvertiserDataByDate(date: Date) {
-    console.log(`[DatabaseService] getAdvertiserDataByDate 调用, 日期: ${date.toISOString()}`);
-    
+  static async getAdvertiserDataByDate(date: Date, page = 1, pageSize = 20) {
+    console.log(`[DatabaseService] getAdvertiserDataByDate 调用, 日期: ${date.toISOString()}, page: ${page}, pageSize: ${pageSize}`);
     try {
-      // 构建正确的日期范围（UTC时间）
       const startOfDay = new Date(date.toISOString().split('T')[0] + 'T00:00:00.000Z');
       const endOfDay = new Date(date.toISOString().split('T')[0] + 'T23:59:59.999Z');
-      
       console.log(`[DatabaseService] 查询日期范围: ${startOfDay.toISOString()} ~ ${endOfDay.toISOString()}`);
-      
-      // 获取所有广告商基础信息
       const advertisers = await prisma.advertiser.findMany({
+        skip: (page - 1) * pageSize,
+        take: pageSize,
         include: {
           dailyEpc: {
             where: {
@@ -156,19 +153,15 @@ export class DatabaseService {
         },
       });
       console.log(`[DatabaseService] 查询到 ${advertisers.length} 个广告商的基础数据`);
-
-      // 组装数据
       const result = advertisers.map(advertiser => {
         const epcData = advertiser.dailyEpc[0];
         const trend = advertiser.entityTrend;
-
         if (!epcData) {
           console.log(`[DatabaseService] 广告商 ${advertiser.advId} 没有 EPC 数据`);
         }
         if (!trend) {
           console.log(`[DatabaseService] 广告商 ${advertiser.advId} 没有趋势数据`);
         }
-
         return {
           adv_logo: advertiser.advLogo || '',
           adv_name: advertiser.advName,
@@ -193,10 +186,10 @@ export class DatabaseService {
           trend_30_day: trend?.epcTrendCategory30Day || 'UNKNOWN',
         };
       });
-
       console.log(`[DatabaseService] 成功组装 ${result.length} 条数据`);
+      console.log('[DatabaseService] getAdvertiserDataByDate 返回的原始数据:');
+      console.log(JSON.stringify(result, null, 2));
       return result;
-
     } catch (error) {
       console.error('[DatabaseService] 获取数据时发生错误:', error);
       throw error;

@@ -76,6 +76,11 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
   const itemsPerPage = 20;
 
+  // 搜索时自动跳转到第一页
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   // 检查EPC趋势
   const checkEpcTrend = (epcHistory: number[]): 'up' | 'down' | 'flat' => {
     if (!epcHistory || epcHistory.length < 2) return 'flat';
@@ -144,52 +149,6 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
     // eslint-disable-next-line
   }, [epcPeriod, selectedDate, epcTrendFilter, data]);
 
-  // 当显示"全部"时，获取当前页的EPC数据
-  useEffect(() => {
-    if (epcTrendFilter !== 'all' || processedData.length === 0 || !selectedDate) return;
-    
-    const currentPageIds = processedData
-      .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-      .map(item => item.adv_id)
-      .filter(id => !epcData[id] && !loadingEpc[id]);
-      
-    if (currentPageIds.length === 0) return;
-    
-    const fetchCurrentPageEpc = async () => {
-      setLoadingEpc(prev => {
-        const newLoading = { ...prev };
-        currentPageIds.forEach(id => { newLoading[id] = true; });
-        return newLoading;
-      });
-      
-      try {
-        const response = await fetch(`/api/epc`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            adv_ids: currentPageIds,
-            period: epcPeriod,
-            endDate: selectedDate
-          }),
-        });
-        const result = await response.json();
-        if (result.success) {
-          setEpcData(prev => ({ ...prev, ...result.data }));
-        }
-      } catch (error) {
-        console.error('[DataTable] 获取当前页EPC数据失败:', error);
-      } finally {
-        setLoadingEpc(prev => {
-          const newLoading = { ...prev };
-          currentPageIds.forEach(id => { delete newLoading[id]; });
-          return newLoading;
-        });
-      }
-    };
-    
-    fetchCurrentPageEpc();
-  }, [processedData, currentPage, epcPeriod, selectedDate, epcTrendFilter]);
-
   // 过滤数据（现在主要由后端完成，前端只做显示）
   const filteredByTrend = useMemo(() => {
     // 如果正在加载任何EPC数据，返回所有数据
@@ -248,6 +207,51 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   const totalPages = Math.ceil(sortedData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedData = sortedData.slice(startIndex, startIndex + itemsPerPage);
+
+  // 当显示"全部"时，获取当前页的EPC数据
+  useEffect(() => {
+    if (epcTrendFilter !== 'all' || paginatedData.length === 0 || !selectedDate) return;
+
+    const currentPageIds = paginatedData
+      .map(item => item.adv_id)
+      .filter(id => !epcData[id] && !loadingEpc[id]);
+
+    if (currentPageIds.length === 0) return;
+
+    const fetchCurrentPageEpc = async () => {
+      setLoadingEpc(prev => {
+        const newLoading = { ...prev };
+        currentPageIds.forEach(id => { newLoading[id] = true; });
+        return newLoading;
+      });
+
+      try {
+        const response = await fetch(`/api/epc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adv_ids: currentPageIds,
+            period: epcPeriod,
+            endDate: selectedDate
+          }),
+        });
+        const result = await response.json();
+        if (result.success) {
+          setEpcData(prev => ({ ...prev, ...result.data }));
+        }
+      } catch (error) {
+        console.error('[DataTable] 获取当前页EPC数据失败:', error);
+      } finally {
+        setLoadingEpc(prev => {
+          const newLoading = { ...prev };
+          currentPageIds.forEach(id => { delete newLoading[id]; });
+          return newLoading;
+        });
+      }
+    };
+
+    fetchCurrentPageEpc();
+  }, [paginatedData, epcPeriod, selectedDate, epcTrendFilter]);
 
   // 通知父组件当前可导出的数据
   useEffect(() => {
@@ -701,63 +705,26 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                           />
                           {/* 趋势指示器 */}
                           {(() => {
-                                // 优先使用后端计算的趋势数据
-                                let trend = itemEpcData.trend;
-                                
-                                // 如果没有后端趋势数据，使用前端计算作为备用
-                                // 但首先检查数据是否足够计算趋势
-                                if (!trend) {
-                                  if (itemEpcData.history && itemEpcData.history.length >= 2) {
-                                    const clientTrend = checkEpcTrend(itemEpcData.history);
-                                    const trendMapping: Record<string, string> = {
-                                      'up': 'UPWARD',
-                                      'down': 'DOWNWARD',
-                                      'flat': 'STABLE'
-                                    };
-                                    trend = trendMapping[clientTrend] || 'STABLE';
-                                  } else {
-                                    // 数据不足，显示为稳定
-                                    trend = 'STABLE';
-                                  }
-                                }
-                                
-                                if (trend === 'UPWARD') {
-                              return (
-                                    <div className="flex items-center text-green-600 text-xs bg-green-50 px-2 py-1 rounded">
-                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                                  </svg>
-                                  上升
-                                </div>
-                              );
-                                } else if (trend === 'DOWNWARD') {
-                              return (
-                                    <div className="flex items-center text-red-600 text-xs bg-red-50 px-2 py-1 rounded">
-                                      <svg className="w-3 h-3 mr-1 transform rotate-180" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                                  </svg>
-                                  下降
-                                </div>
-                              );
-                                } else if (trend === 'VOLATILE') {
-                                  return (
-                                    <div className="flex items-center text-orange-600 text-xs bg-orange-50 px-2 py-1 rounded">
-                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zM14 9a1 1 0 100 2h2a1 1 0 100-2h-2zM3 16a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                      </svg>
-                                      波动
-                                    </div>
-                                  );
-                            } else {
-                              return (
-                                    <div className="flex items-center text-gray-500 text-xs bg-gray-50 px-2 py-1 rounded">
-                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                  </svg>
-                                  {itemEpcData.history && itemEpcData.history.length < 2 ? '数据不足' : '平稳'}
-                                </div>
-                              );
+                            // 只用后端返回的trend字段
+                            const trend = itemEpcData.trend;
+                            let trendText = '-';
+                            let trendColor = 'text-gray-400';
+                            if (trend === 'UPWARD') {
+                              trendText = '上升';
+                              trendColor = 'text-green-600';
+                            } else if (trend === 'DOWNWARD') {
+                              trendText = '下降';
+                              trendColor = 'text-red-600';
+                            } else if (trend === 'STABLE') {
+                              trendText = '平稳';
+                              trendColor = 'text-gray-600';
+                            } else if (trend === 'VOLATILE') {
+                              trendText = '波动';
+                              trendColor = 'text-yellow-600';
                             }
+                            return (
+                              <span className={`ml-2 text-xs font-bold ${trendColor}`}>{trendText}</span>
+                            );
                           })()}
                         </div>
                         {/* 详细工具提示 */}

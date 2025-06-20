@@ -96,6 +96,8 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`[/api/epc] 找到 ${filteredAdvertisers.length} 个符合趋势条件的广告商`);
+      console.log('[/api/epc] 符合趋势条件的广告商详细信息:');
+      console.log(JSON.stringify(filteredAdvertisers, null, 2));
 
       // 如果没有符合条件的广告商，返回空对象
       if (filteredAdvertisers.length === 0) {
@@ -210,11 +212,11 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    console.log(`[/api/epc] 查询到的EPC历史数据:`, JSON.stringify(epcData.map(d => ({
-      advId: d.advertiser.advId,
-      date: d.date,
-      epcValue: d.epcValue
-    })), null, 2));
+    // console.log(`[/api/epc] 查询到的EPC历史数据:`, JSON.stringify(epcData.map(d => ({
+    //   advId: d.advertiser.advId,
+    //   date: d.date,
+    //   epcValue: d.epcValue
+    // })), null, 2));
 
     // 获取趋势数据
     const trendsData = await prisma.entityTrend.findMany({

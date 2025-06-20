@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
     const targetDate = new Date(date);
     console.log(`[/api/data] 解析后的日期: ${targetDate.toISOString()}`);
     
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
+    
     // 检查是否有数据
     const hasData = await DatabaseService.hasDataForDate(targetDate);
     console.log(`[/api/data] 日期 ${date} 是否有数据: ${hasData}`);
@@ -32,15 +35,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 从数据库加载数据
-    console.log(`[/api/data] 开始从数据库加载数据`);
-    const advertisers = await DatabaseService.getAdvertiserDataByDate(targetDate);
-    console.log(`[/api/data] 成功从数据库加载 ${advertisers.length} 条数据`);
-
+    // 查询总数
+    const total = await DatabaseService.getAdvertiserCountByDate(targetDate);
+    // 查询当前页
+    const advertisers = await DatabaseService.getAdvertiserDataByDate(targetDate, page, pageSize);
     return NextResponse.json({
       success: true,
       data: advertisers,
-      message: `成功加载 ${advertisers.length} 条数据`
+      total,
+      message: `成功加载第${page}页，共${total}条数据`
     });
 
   } catch (error) {
