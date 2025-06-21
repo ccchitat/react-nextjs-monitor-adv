@@ -132,7 +132,7 @@ export default function LogsPage() {
           <h1 className="text-3xl font-bold text-gray-900">抓取日志</h1>
           <nav className="flex space-x-4">
             <Link 
-              href="/"
+              href="/lh"
               className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium"
             >
               数据监控
@@ -148,7 +148,7 @@ export default function LogsPage() {
 
         <div className="flex justify-between items-center mb-6">
           <Link
-            href="/"
+            href="/lh"
             className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
