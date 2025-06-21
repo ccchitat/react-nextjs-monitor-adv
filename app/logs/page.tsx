@@ -133,30 +133,26 @@ export default function LogsPage() {
           <nav className="flex space-x-4">
             <Link 
               href="/lh"
-              className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
             >
               数据监控
             </Link>
-            <Link 
+            <Link
               href="/logs"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+              className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
             >
               抓取日志
+            </Link>
+            <Link
+              href="/schedule"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+            >
+              定时管理
             </Link>
           </nav>
         </div>
 
-        <div className="flex justify-between items-center mb-6">
-          <Link
-            href="/lh"
-            className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            返回主页
-          </Link>
-          
+        <div className="flex justify-end items-center mb-6">
           <button
             onClick={fetchLogs}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"

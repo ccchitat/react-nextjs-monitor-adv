@@ -12,8 +12,8 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
-const title = "Next.js Prisma Postgres Auth Starter";
-const description = "This is a Next.js starter kit that uses Next-Auth for simple email + password login and a Postgres database to persist the data.";
+const title = "数据监控";
+const description = "大大个数据监控";
 
 export const metadata: Metadata = {
   title,

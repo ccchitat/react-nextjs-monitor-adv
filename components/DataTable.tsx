@@ -178,9 +178,6 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                 style={{ minWidth: 200 }}
               />
-              <span className="text-sm text-gray-600">
-                共 0 条记录
-              </span>
             </div>
           </div>
         </div>
@@ -208,9 +205,6 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
                 style={{ minWidth: 200 }}
               />
-              <span className="text-sm text-gray-600">
-                共 0 条记录
-              </span>
             </div>
           </div>
         </div>
@@ -246,9 +240,6 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
               style={{ minWidth: 200 }}
             />
-            <span className="text-sm text-gray-600">
-              共 {data.length} 条记录
-            </span>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             {/* EPC时间范围选择 */}

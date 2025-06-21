@@ -301,19 +301,25 @@ export default function Home() {
     <main className="min-h-screen p-8 bg-gray-50">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8 relative z-10">
-          <h1 className="text-3xl font-bold text-gray-900">广告商数据监控</h1>
+          <h1 className="text-3xl font-bold text-gray-900">linkhaitao数据监控</h1>
           <nav className="flex space-x-4">
             <Link 
               href="/lh"
-              className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium"
+              className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
             >
               数据监控
             </Link>
             <Link
               href="/logs"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium cursor-pointer"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
             >
               抓取日志
+            </Link>
+            <Link
+              href="/schedule"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+            >
+              定时管理
             </Link>
           </nav>
         </div>
