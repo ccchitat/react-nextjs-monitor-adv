@@ -55,7 +55,8 @@ export default function Home() {
     try {
       setLoading(true);
       setError(null);
-      setAdvertisers([]);
+      // 不清空当前数据，保持显示直到新数据加载完成
+      // setAdvertisers([]); // 注释掉这行，避免闪烁
       setCurrentPage(page);
 
       // 如果有趋势筛选，调用EPC接口获取所有符合条件的数据（不分页）
@@ -480,7 +481,7 @@ export default function Home() {
           <button
             onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1 || loading}
-            className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
             上一页
           </button>
@@ -558,7 +559,7 @@ export default function Home() {
                     key={p}
                     onClick={() => handlePageChange(Number(p))}
                     disabled={p === currentPage || loading}
-                    className={`px-3 py-1 rounded transition-colors ${
+                    className={`px-3 py-1 rounded transition-all duration-200 ${
                       p === currentPage 
                         ? 'bg-blue-600 text-white' 
                         : 'bg-gray-200 text-gray-600 hover:bg-blue-100'
@@ -571,7 +572,7 @@ export default function Home() {
           <button
             onClick={() => handlePageChange(Math.min(Math.max(1, Math.ceil(total / pageSize)), currentPage + 1))}
             disabled={currentPage === Math.max(1, Math.ceil(total / pageSize)) || loading}
-            className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
             下一页
           </button>
@@ -589,12 +590,12 @@ export default function Home() {
               value={jumpPage}
               onChange={e => setJumpPage(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleJump(); }}
-              className="w-16 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-16 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
               placeholder="页码"
             />
             <button
               onClick={handleJump}
-              className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-200"
               disabled={!jumpPage || isNaN(Number(jumpPage)) || Number(jumpPage) < 1 || Number(jumpPage) > Math.max(1, Math.ceil(total / pageSize))}
             >
               跳转
@@ -607,7 +608,7 @@ export default function Home() {
             <select
               value={pageSize}
               onChange={e => handlePageSizeChange(Number(e.target.value))}
-              className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
             >
               {[5, 10, 20, 50, 100].map(size => (
                 <option key={size} value={size}>{size}条</option>

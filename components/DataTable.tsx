@@ -225,10 +225,10 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
+    <div className="bg-white rounded-lg shadow overflow-hidden transition-all duration-300 ease-in-out">
       {/* 加载指示器 */}
       {loading && (
-        <div className="p-3 bg-blue-50 border-b border-blue-200">
+        <div className="p-3 bg-blue-50 border-b border-blue-200 animate-pulse">
           <div className="flex items-center justify-center text-blue-600 text-sm">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
             正在加载数据...
@@ -246,7 +246,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               placeholder="搜索广告商..."
               value={searchTerm}
               onChange={e => onSearchChange && onSearchChange(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
               style={{ minWidth: 200 }}
             />
             <span className="text-sm text-gray-600">
@@ -262,7 +262,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   <button
                     key={period}
                     onClick={() => onEpcPeriodChange && onEpcPeriodChange(period)}
-                    className={`px-3 py-1 text-sm font-medium transition-colors ${
+                    className={`px-3 py-1 text-sm font-medium transition-all duration-200 ${
                       epcPeriod === period
                         ? 'bg-blue-600 text-white'
                         : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -279,7 +279,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               <div className="flex border border-gray-300 rounded-md overflow-hidden">
                 <button
                   onClick={() => onTrendFilterChange && onTrendFilterChange('all')}
-                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                  className={`px-3 py-1 text-sm font-medium transition-all duration-200 ${
                     trendFilter === 'all'
                       ? 'bg-blue-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -289,7 +289,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 </button>
                 <button
                   onClick={() => onTrendFilterChange && onTrendFilterChange('UPWARD')}
-                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                  className={`px-3 py-1 text-sm font-medium transition-all duration-200 ${
                     trendFilter === 'UPWARD'
                       ? 'bg-green-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -299,7 +299,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 </button>
                 <button
                   onClick={() => onTrendFilterChange && onTrendFilterChange('DOWNWARD')}
-                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                  className={`px-3 py-1 text-sm font-medium transition-all duration-200 ${
                     trendFilter === 'DOWNWARD'
                       ? 'bg-red-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -309,7 +309,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 </button>
                 <button
                   onClick={() => onTrendFilterChange && onTrendFilterChange('STABLE')}
-                  className={`px-3 py-1 text-sm font-medium transition-colors ${
+                  className={`px-3 py-1 text-sm font-medium transition-all duration-200 ${
                     trendFilter === 'STABLE'
                       ? 'bg-gray-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -325,7 +325,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
 
       {/* 表格 */}
       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-300" style={{ tableLayout: 'fixed' }}>
+        <table className="min-w-full divide-y divide-gray-300 transition-opacity duration-300" style={{ tableLayout: 'fixed', opacity: loading ? 0.6 : 1 }}>
           <thead className="bg-gray-50">
             <tr>
               <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '200px', minWidth: '200px', maxWidth: '200px' }}>
@@ -365,7 +365,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedData.map((item, rowIdx) => (
-              <tr key={item.adv_id} className="hover:bg-gray-50 group h-20">
+              <tr key={item.adv_id} className="hover:bg-gray-50 group h-20 transition-all duration-200">
                 {/* 广告商信息 */}
                 <td
                   className="px-4 py-4 relative"
