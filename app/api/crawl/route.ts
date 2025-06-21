@@ -41,16 +41,16 @@ function generateSign(params: Record<string, any>): string {
     .filter(([_, value]) => value !== '')
     .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
   
-  console.log('过滤后的参数:', filteredParams);
+  // console.log('过滤后的参数:', filteredParams);
   
   // 构建签名字符串（只拼接值）
   const signStr = Object.values(filteredParams).join('');
   
-  console.log('签名字符串:', signStr);
+  // console.log('签名字符串:', signStr);
   
   // 计算MD5
   const sign = crypto.createHash('md5').update(signStr).digest('hex');
-  console.log('生成的sign:', sign);
+  // console.log('生成的sign:', sign);
   
   return sign;
 }

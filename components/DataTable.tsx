@@ -37,6 +37,9 @@ interface DataTableProps {
   onTrendFilterChange?: (trend: string) => void;
   searchTerm?: string;
   onSearchChange?: (term: string) => void;
+  sortField?: string | null;
+  sortDirection?: 'asc' | 'desc';
+  onSortChange?: (field: string) => void;
 }
 
 type EPCPeriod = 7 | 14 | 30;
@@ -97,46 +100,17 @@ function SortIcon({ field, sortField, sortDirection }: { field: keyof Advertiser
   );
 }
 
-export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, onExportDataChange, epcPeriod = 7, trendFilter = 'all', onTrendFilterChange, searchTerm = '', onSearchChange }: DataTableProps) {
-  const [sortField, setSortField] = useState<keyof Advertiser | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
+export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, onExportDataChange, epcPeriod = 7, trendFilter = 'all', onTrendFilterChange, searchTerm = '', onSearchChange, sortField, sortDirection, onSortChange }: DataTableProps) {
   const [epcData, setEpcData] = useState<Record<string, { history: number[], labels: string[], trend?: string }>>({});
   const [loadingEpc, setLoadingEpc] = useState<Record<string, boolean>>({});
   const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
 
-  // 排序
-  const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => {
-      if (!sortField || !sortDirection) return 0;
-      const aValue = a[sortField];
-      const bValue = b[sortField];
-      if (sortField === '30_epc' || sortField === '30_rate' || sortField === 'monthly_visits') {
-        const aNum = typeof aValue === 'number' ? aValue : parseFloat(String(aValue).replace(/[^\d.-]/g, '')) || 0;
-        const bNum = typeof bValue === 'number' ? bValue : parseFloat(String(bValue).replace(/[^\d.-]/g, '')) || 0;
-        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-      }
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortDirection === 'asc' 
-          ? aValue.localeCompare(bValue, 'zh-CN')
-          : bValue.localeCompare(aValue, 'zh-CN');
-      }
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-      const aStr = String(aValue || '');
-      const bStr = String(bValue || '');
-      return sortDirection === 'asc' 
-        ? aStr.localeCompare(bStr, 'zh-CN')
-        : bStr.localeCompare(aStr, 'zh-CN');
-    });
-  }, [data, sortField, sortDirection]);
-
   // 通知父组件当前可导出的数据
   useEffect(() => {
     if (onExportDataChange) {
-      onExportDataChange(sortedData);
+      onExportDataChange(data);
     }
-  }, [sortedData, onExportDataChange]);
+  }, [data, onExportDataChange]);
 
   // 获取当前页面广告商的EPC数据
   useEffect(() => {
@@ -191,19 +165,8 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
 
   // 处理排序
   const handleSort = (field: keyof Advertiser) => {
-    if (sortField === field) {
-      // 循环：null -> asc -> desc -> null
-      if (sortDirection === null) {
-        setSortDirection('asc');
-      } else if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else {
-        setSortField(null);
-        setSortDirection(null);
-      }
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
+    if (onSortChange) {
+      onSortChange(field);
     }
   };
 
@@ -292,7 +255,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               style={{ minWidth: 200 }}
             />
             <span className="text-sm text-gray-600">
-              共 {sortedData.length} 条记录
+              共 {data.length} 条记录
             </span>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -385,19 +348,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('monthly_visits')}>
                 <div className="flex items-center justify-center gap-2">
                   <span className="group-hover:text-gray-900">月访问量</span>
-                  <SortIcon field="monthly_visits" sortField={sortField} sortDirection={sortDirection} />
+                  <SortIcon field="monthly_visits" sortField={sortField as keyof Advertiser} sortDirection={sortDirection} />
                 </div>
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('30_epc')}>
                 <div className="flex items-center justify-center gap-2">
                   <span className="group-hover:text-gray-900">30天EPC</span>
-                  <SortIcon field="30_epc" sortField={sortField} sortDirection={sortDirection} />
+                  <SortIcon field="30_epc" sortField={sortField as keyof Advertiser} sortDirection={sortDirection} />
                 </div>
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('30_rate')}>
                 <div className="flex items-center justify-center gap-2">
                   <span className="group-hover:text-gray-900">30天转化率</span>
-                  <SortIcon field="30_rate" sortField={sortField} sortDirection={sortDirection} />
+                  <SortIcon field="30_rate" sortField={sortField as keyof Advertiser} sortDirection={sortDirection} />
                 </div>
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '180px', minWidth: '180px', maxWidth: '180px' }}>
@@ -406,7 +369,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {sortedData.map((item, rowIdx) => (
+            {data.map((item, rowIdx) => (
               <tr key={item.adv_id} className="hover:bg-gray-50 group h-20 transition-all duration-200">
                 {/* 广告商信息 */}
                 <td

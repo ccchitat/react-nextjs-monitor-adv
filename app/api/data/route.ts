@@ -6,8 +6,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const search = searchParams.get('search') || undefined;
+    const sortField = searchParams.get('sortField') || undefined;
+    const sortDirection = (searchParams.get('sortDirection') as 'asc' | 'desc') || 'asc';
     
-    console.log(`[/api/data] 收到GET请求, date: ${date}, search: ${search}`);
+    console.log(`[/api/data] 收到GET请求, date: ${date}, search: ${search}, sortField: ${sortField}, sortDirection: ${sortDirection}`);
 
     if (!date) {
       console.log('[/api/data] 缺少日期参数');
@@ -38,8 +40,15 @@ export async function GET(request: NextRequest) {
 
     // 查询总数
     const total = await DatabaseService.getAdvertiserCountByDate(targetDate, search);
-    // 查询当前页
-    const advertisers = await DatabaseService.getAdvertiserDataByDate(targetDate, page, pageSize, search);
+    // 查询当前页（支持排序）
+    const advertisers = await DatabaseService.getAdvertiserDataByDate(
+      targetDate, 
+      page, 
+      pageSize, 
+      search, 
+      sortField, 
+      sortDirection
+    );
     return NextResponse.json({
       success: true,
       data: advertisers,

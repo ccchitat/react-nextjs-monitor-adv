@@ -43,6 +43,8 @@ export default function Home() {
   const [jumpPage, setJumpPage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [trendFilter, setTrendFilter] = useState('all');
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // 获取今天的日期作为默认值
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function Home() {
     setSelectedDate(today);
   }, []);
 
-  // 从数据库加载数据（支持分页）
+  // 从数据库加载数据（支持分页和排序）
   const loadDataFromDatabase = async (page = 1) => {
     try {
       setLoading(true);
@@ -90,7 +92,7 @@ export default function Home() {
         return;
       }
 
-      // 正常加载数据（无趋势筛选，使用分页）
+      // 正常加载数据（无趋势筛选，使用分页和排序）
       const params = new URLSearchParams({
         date: selectedDate || new Date().toISOString().split('T')[0],
         page: String(page),
@@ -98,6 +100,10 @@ export default function Home() {
       });
       if (searchTerm) params.append('search', searchTerm);
       if (epcTimeRange) params.append('epcPeriod', String(epcTimeRange));
+      if (sortField) {
+        params.append('sortField', sortField);
+        params.append('sortDirection', sortDirection);
+      }
       const response = await fetch(`/api/data?${params.toString()}`);
       if (!response.ok) {
         throw new Error('加载数据失败');
@@ -126,7 +132,7 @@ export default function Home() {
     if (selectedDate) {
       loadDataFromDatabase(1);
     }
-  }, [selectedDate, pageSize, searchTerm, epcTimeRange, trendFilter]);
+  }, [selectedDate, pageSize, searchTerm, epcTimeRange, trendFilter, sortField, sortDirection]);
 
   const fetchData = async () => {
     try {
@@ -166,7 +172,8 @@ export default function Home() {
             if (data.type === 'progress') {
               setProgress(data.data);
             } else if (data.type === 'data') {
-              setAdvertisers((prev: Advertiser[]) => [...prev, ...data.data.list]);
+              // 抓取过程中不刷新列表，只更新进度
+              console.log(`抓取到第 ${data.data.list.length} 条数据`);
             } else if (data.type === 'complete') {
               console.log('抓取完成，重新加载数据库数据');
               // 抓取完成后重新从数据库加载数据
@@ -195,6 +202,10 @@ export default function Home() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       setFetching(false);
+      // 停止抓取后刷新数据
+      setTimeout(() => {
+        loadDataFromDatabase();
+      }, 500);
     }
   };
 
@@ -246,6 +257,23 @@ export default function Home() {
   // 处理趋势筛选变化
   const handleTrendFilterChange = (trend: string) => {
     setTrendFilter(trend);
+    setCurrentPage(1);
+  };
+
+  // 处理排序变化
+  const handleSortChange = (field: string) => {
+    if (sortField === field) {
+      // 循环：asc -> desc -> null -> asc
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortField(null);
+        setSortDirection('asc');
+      }
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
     setCurrentPage(1);
   };
 
@@ -474,6 +502,9 @@ export default function Home() {
           onTrendFilterChange={handleTrendFilterChange}
           searchTerm={searchTerm}
           onSearchChange={handleSearch}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
         />
         {/* 分页控件重写区 */}
         <div className="flex flex-wrap justify-center items-center mt-6 gap-2">
