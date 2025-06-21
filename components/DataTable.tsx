@@ -31,7 +31,6 @@ interface DataTableProps {
   loading: boolean;
   selectedDate: string;
   onEpcPeriodChange?: (period: EPCPeriod) => void;
-  onExportDataChange?: (data: Advertiser[]) => void;
   epcPeriod?: EPCPeriod;
   trendFilter?: string;
   onTrendFilterChange?: (trend: string) => void;
@@ -100,17 +99,10 @@ function SortIcon({ field, sortField, sortDirection }: { field: keyof Advertiser
   );
 }
 
-export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, onExportDataChange, epcPeriod = 7, trendFilter = 'all', onTrendFilterChange, searchTerm = '', onSearchChange, sortField, sortDirection, onSortChange }: DataTableProps) {
+export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, epcPeriod = 7, trendFilter = 'all', onTrendFilterChange, searchTerm = '', onSearchChange, sortField, sortDirection, onSortChange }: DataTableProps) {
   const [epcData, setEpcData] = useState<Record<string, { history: number[], labels: string[], trend?: string }>>({});
   const [loadingEpc, setLoadingEpc] = useState<Record<string, boolean>>({});
   const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
-
-  // 通知父组件当前可导出的数据
-  useEffect(() => {
-    if (onExportDataChange) {
-      onExportDataChange(data);
-    }
-  }, [data, onExportDataChange]);
 
   // 获取当前页面广告商的EPC数据
   useEffect(() => {

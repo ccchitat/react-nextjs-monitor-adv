@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import DataTable from '@/components/DataTable';
+import { saveAs } from 'file-saver';
 
 interface Advertiser {
   adv_logo: string;
@@ -33,7 +34,6 @@ export default function Home() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [epcTimeRange, setEpcTimeRange] = useState<7 | 14 | 30>(7);
-  const [exportData, setExportData] = useState<Advertiser[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -42,7 +42,8 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [trendFilter, setTrendFilter] = useState('all');
   const [sortField, setSortField] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [exporting, setExporting] = useState(false);
 
   // 获取今天的日期作为默认值
   useEffect(() => {
@@ -237,15 +238,15 @@ export default function Home() {
 
   const handleSortChange = (field: string) => {
     if (sortField === field) {
-      if (sortDirection === 'asc') {
-        setSortDirection('desc');
-      } else if (sortDirection === 'desc') {
-        setSortField(null);
+      if (sortDirection === 'desc') {
         setSortDirection('asc');
+      } else if (sortDirection === 'asc') {
+        setSortField(null);
+        setSortDirection('desc');
       }
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection('desc');
     }
     setCurrentPage(1);
   };
@@ -256,6 +257,44 @@ export default function Home() {
     const page = Math.max(1, Math.min(totalPages, Number(jumpPage)));
     if (!isNaN(page)) handlePageChange(page);
     setJumpPage('');
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: selectedDate,
+          searchTerm,
+          epcPeriod: epcTimeRange,
+          trendFilter,
+          sortField,
+          sortDirection
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '导出失败');
+      }
+
+      const blob = await response.blob();
+      const fileName = `广告商数据_${selectedDate}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // 直接使用导入的saveAs函数
+      saveAs(blob, fileName);
+      
+    } catch (error: any) {
+      console.error('导出失败:', error);
+      alert(`导出失败: ${error.message}`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -328,6 +367,26 @@ export default function Home() {
                 )}
               </>
             )}
+            {/* 导出Excel按钮 */}
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting || advertisers.length === 0}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center gap-2"
+            >
+              {exporting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  导出中...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  导出Excel
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -362,7 +421,6 @@ export default function Home() {
           data={advertisers} 
           loading={loading} 
           onEpcPeriodChange={handleEpcPeriodChange}
-          onExportDataChange={setExportData}
           selectedDate={selectedDate}
           epcPeriod={epcTimeRange}
           trendFilter={trendFilter}
