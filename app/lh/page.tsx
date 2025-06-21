@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import DataTable from '@/components/DataTable';
 import { saveAs } from 'file-saver';
+import { useSession, SessionContextValue } from 'next-auth/react';
 
 interface Advertiser {
   adv_logo: string;
@@ -27,6 +28,7 @@ interface Advertiser {
 }
 
 export default function Home() {
+  const { data: session } = useSession() as SessionContextValue;
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -44,6 +46,9 @@ export default function Home() {
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
+  
+  // 检查是否为管理员
+  const isAdmin = session?.user?.isAdmin || false;
 
   // 获取今天的日期作为默认值
   useEffect(() => {
@@ -309,18 +314,28 @@ export default function Home() {
             >
               数据监控
             </Link>
-            <Link
-              href="/logs"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
-            >
-              抓取日志
-            </Link>
-            <Link
-              href="/schedule"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
-            >
-              定时管理
-            </Link>
+            {isAdmin && (
+              <>
+                <Link
+                  href="/logs"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  抓取日志
+                </Link>
+                <Link
+                  href="/schedule"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  定时管理
+                </Link>
+                <Link
+                  href="/settings"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  系统设置
+                </Link>
+              </>
+            )}
           </nav>
         </div>
         
@@ -352,7 +367,7 @@ export default function Home() {
           </div>
           
           <div className="flex gap-4">
-            {isToday() && (
+            {isToday() && isAdmin && (
               <>
                 {!fetching && (
                   <button

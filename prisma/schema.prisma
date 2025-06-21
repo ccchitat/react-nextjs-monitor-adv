@@ -10,6 +10,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 用户模型
+model User {
+  id        BigInt   @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  isAdmin   Boolean  @default(false) @map("is_admin")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// 系统配置模型
+model SystemConfig {
+  id          BigInt   @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
+
 // 定义趋势类型枚举
 enum ETrendType {
   UPWARD    // 上升趋势

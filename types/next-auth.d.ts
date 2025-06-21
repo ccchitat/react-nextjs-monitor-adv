@@ -7,9 +7,10 @@ declare module "next-auth" {
    */
   interface Session {
     user: {
-      id: number | string;
-      email: string;
+      id: string;
+      username: string;
       password: string;
+      isAdmin: boolean;
       TodoList?: ItodoItem[];
     };
   }

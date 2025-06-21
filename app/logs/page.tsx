@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSession, SessionContextValue } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 interface CrawlLog {
   id: number;
@@ -18,9 +20,21 @@ interface CrawlLog {
 }
 
 export default function LogsPage() {
+  const { data: session } = useSession() as SessionContextValue;
+  const router = useRouter();
   const [logs, setLogs] = useState<CrawlLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 检查是否为管理员
+  const isAdmin = session?.user?.isAdmin || false;
+
+  // 如果不是管理员，重定向到主页
+  useEffect(() => {
+    if (session && !isAdmin) {
+      router.push('/lh');
+    }
+  }, [session, isAdmin, router]);
 
   useEffect(() => {
     fetchLogs();
@@ -137,18 +151,28 @@ export default function LogsPage() {
             >
               数据监控
             </Link>
-            <Link 
-              href="/logs"
-              className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
-            >
-              抓取日志
-            </Link>
-            <Link
-              href="/schedule"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
-            >
-              定时管理
-            </Link>
+            {isAdmin && (
+              <>
+                <Link 
+                  href="/logs"
+                  className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
+                >
+                  抓取日志
+                </Link>
+                <Link
+                  href="/schedule"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  定时管理
+                </Link>
+                <Link
+                  href="/settings"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  系统设置
+                </Link>
+              </>
+            )}
           </nav>
         </div>
 

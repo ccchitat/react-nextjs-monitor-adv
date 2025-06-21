@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ScheduleManager from '@/components/ScheduleManager';
+import { useSession, SessionContextValue } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 interface ScheduleConfig {
   interval: number;
@@ -14,6 +16,8 @@ interface ScheduleConfig {
 }
 
 export default function SchedulePage() {
+  const { data: session } = useSession() as SessionContextValue;
+  const router = useRouter();
   const [scheduleStatus, setScheduleStatus] = useState<{
     isScheduled: boolean;
     config: ScheduleConfig;
@@ -28,6 +32,16 @@ export default function SchedulePage() {
       timezone: 'Asia/Shanghai'
     }
   });
+
+  // 检查是否为管理员
+  const isAdmin = session?.user?.isAdmin || false;
+
+  // 如果不是管理员，重定向到主页
+  useEffect(() => {
+    if (session && !isAdmin) {
+      router.push('/lh');
+    }
+  }, [session, isAdmin, router]);
 
   // 加载定时任务状态
   const loadScheduleStatus = async () => {
@@ -84,18 +98,28 @@ export default function SchedulePage() {
             >
               数据监控
             </Link>
-            <Link
-              href="/logs"
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
-            >
-              抓取日志
-            </Link>
-            <Link
-              href="/schedule"
-              className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
-            >
-              定时管理
-            </Link>
+            {isAdmin && (
+              <>
+                <Link
+                  href="/logs"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  抓取日志
+                </Link>
+                <Link
+                  href="/schedule"
+                  className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
+                >
+                  定时管理
+                </Link>
+                <Link
+                  href="/settings"
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  系统设置
+                </Link>
+              </>
+            )}
           </nav>
         </div>
 
@@ -191,12 +215,14 @@ export default function SchedulePage() {
             >
               查看数据监控
             </Link>
-            <Link
-              href="/logs"
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 font-medium transition-colors"
-            >
-              查看抓取日志
-            </Link>
+            {isAdmin && (
+              <Link
+                href="/logs"
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 font-medium transition-colors"
+              >
+                查看抓取日志
+              </Link>
+            )}
           </div>
         </div>
       </div>

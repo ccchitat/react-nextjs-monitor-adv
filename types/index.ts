@@ -6,7 +6,7 @@ export interface ItodoItem {
 
 export interface Iuser {
   id?: number;
-  email: string;
+  username: string;
   password: string;
   TodoList?: ItodoItem[];
 }

@@ -32,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body className={inter.variable}>
         <Toaster />
-        <Suspense fallback="Loading...">
+        <Suspense fallback="加载中...">
           {/* @ts-expect-error Async Server Component */}
           <AuthStatus />
         </Suspense>
