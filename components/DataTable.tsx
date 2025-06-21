@@ -209,17 +209,59 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
 
   if (loading && data.length === 0) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        <span className="ml-2">正在加载数据...</span>
+      <div className="flex flex-col">
+        {/* 工具栏始终显示 */}
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* 搜索输入框 */}
+              <input
+                type="text"
+                placeholder="搜索广告商..."
+                value={searchTerm}
+                onChange={e => onSearchChange && onSearchChange(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                style={{ minWidth: 200 }}
+              />
+              <span className="text-sm text-gray-600">
+                共 0 条记录
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <span className="ml-2">正在加载数据...</span>
+        </div>
       </div>
     );
   }
 
   if (data.length === 0) {
     return (
-      <div className="text-center p-8 text-gray-500">
-        暂无数据，请点击"开始抓取"按钮获取数据
+      <div className="flex flex-col">
+        {/* 工具栏始终显示 */}
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* 搜索输入框 */}
+              <input
+                type="text"
+                placeholder="搜索广告商..."
+                value={searchTerm}
+                onChange={e => onSearchChange && onSearchChange(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                style={{ minWidth: 200 }}
+              />
+              <span className="text-sm text-gray-600">
+                共 0 条记录
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="text-center p-8 text-gray-500">
+          暂无数据，请尝试更换搜索条件或日期
+        </div>
       </div>
     );
   }

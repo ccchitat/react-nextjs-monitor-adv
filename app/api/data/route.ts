@@ -5,8 +5,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
+    const search = searchParams.get('search') || undefined;
     
-    console.log(`[/api/data] 收到GET请求, date: ${date}`);
+    console.log(`[/api/data] 收到GET请求, date: ${date}, search: ${search}`);
 
     if (!date) {
       console.log('[/api/data] 缺少日期参数');
@@ -36,9 +37,9 @@ export async function GET(request: NextRequest) {
     }
 
     // 查询总数
-    const total = await DatabaseService.getAdvertiserCountByDate(targetDate);
+    const total = await DatabaseService.getAdvertiserCountByDate(targetDate, search);
     // 查询当前页
-    const advertisers = await DatabaseService.getAdvertiserDataByDate(targetDate, page, pageSize);
+    const advertisers = await DatabaseService.getAdvertiserDataByDate(targetDate, page, pageSize, search);
     return NextResponse.json({
       success: true,
       data: advertisers,

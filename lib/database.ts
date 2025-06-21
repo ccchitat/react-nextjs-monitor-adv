@@ -129,15 +129,37 @@ export class DatabaseService {
   }
 
   /**
-   * 获取指定日期的广告商数据
+   * 获取指定日期的广告商数据（支持搜索）
    */
-  static async getAdvertiserDataByDate(date: Date, page = 1, pageSize = 20) {
-    console.log(`[DatabaseService] getAdvertiserDataByDate 调用, 日期: ${date.toISOString()}, page: ${page}, pageSize: ${pageSize}`);
+  static async getAdvertiserDataByDate(date: Date, page = 1, pageSize = 20, searchTerm?: string) {
+    console.log(`[DatabaseService] getAdvertiserDataByDate 调用, 日期: ${date.toISOString()}, page: ${page}, pageSize: ${pageSize}, searchTerm: ${searchTerm}`);
     try {
       const startOfDay = new Date(date.toISOString().split('T')[0] + 'T00:00:00.000Z');
       const endOfDay = new Date(date.toISOString().split('T')[0] + 'T23:59:59.999Z');
       console.log(`[DatabaseService] 查询日期范围: ${startOfDay.toISOString()} ~ ${endOfDay.toISOString()}`);
+      
+      // 构建查询条件
+      const whereCondition: any = {
+        dailyEpc: {
+          some: {
+            date: {
+              gte: startOfDay,
+              lte: endOfDay,
+            },
+          },
+        },
+      };
+      
+      // 添加搜索条件
+      if (searchTerm && searchTerm.trim()) {
+        whereCondition.OR = [
+          { advName: { contains: searchTerm.trim(), mode: 'insensitive' } },
+          { advId: { contains: searchTerm.trim(), mode: 'insensitive' } },
+        ];
+      }
+      
       const advertisers = await prisma.advertiser.findMany({
+        where: whereCondition,
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
@@ -225,20 +247,35 @@ export class DatabaseService {
   }
 
   /**
-   * 获取指定日期的广告商数量
+   * 获取指定日期的广告商数量（支持搜索）
    */
-  static async getAdvertiserCountByDate(date: Date) {
+  static async getAdvertiserCountByDate(date: Date, searchTerm?: string) {
     // 构建正确的日期范围（UTC时间）
     const startOfDay = new Date(date.toISOString().split('T')[0] + 'T00:00:00.000Z');
     const endOfDay = new Date(date.toISOString().split('T')[0] + 'T23:59:59.999Z');
     
-    return prisma.dailyEpc.count({
-      where: {
-        date: {
-          gte: startOfDay,
-          lte: endOfDay,
+    // 构建查询条件
+    const whereCondition: any = {
+      dailyEpc: {
+        some: {
+          date: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
         },
       },
+    };
+    
+    // 添加搜索条件
+    if (searchTerm && searchTerm.trim()) {
+      whereCondition.OR = [
+        { advName: { contains: searchTerm.trim(), mode: 'insensitive' } },
+        { advId: { contains: searchTerm.trim(), mode: 'insensitive' } },
+      ];
+    }
+    
+    return prisma.advertiser.count({
+      where: whereCondition,
     });
   }
 
