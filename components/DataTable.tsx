@@ -32,6 +32,11 @@ interface DataTableProps {
   selectedDate: string;
   onEpcPeriodChange?: (period: EPCPeriod) => void;
   onExportDataChange?: (data: Advertiser[]) => void;
+  epcPeriod?: EPCPeriod;
+  trendFilter?: string;
+  onTrendFilterChange?: (trend: string) => void;
+  searchTerm?: string;
+  onSearchChange?: (term: string) => void;
 }
 
 type EPCPeriod = 7 | 14 | 30;
@@ -63,156 +68,81 @@ const AdvertiserLogo = ({ logoUrl, advertiserName }: { logoUrl: string, advertis
   );
 };
 
-export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, onExportDataChange }: DataTableProps) {
+// 数字格式化工具函数（K/M/B 单位）
+function formatNumber(value: string | number): string {
+  const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/[^\d.-]/g, '')) || 0;
+  if (num >= 1_000_000_000) {
+    return (num / 1_000_000_000).toFixed(1) + 'B';
+  } else if (num >= 1_000_000) {
+    return (num / 1_000_000).toFixed(1) + 'M';
+  } else if (num >= 1_000) {
+    return (num / 1_000).toFixed(1) + 'K';
+  } else {
+    return num.toString();
+  }
+}
+
+// 排序图标组件
+function SortIcon({ field, sortField, sortDirection }: { field: keyof Advertiser, sortField: keyof Advertiser | null, sortDirection: 'asc' | 'desc' | null }) {
+  const isCurrent = sortField === field;
+  return (
+    <span className="flex flex-col ml-1">
+      <svg className={`w-3 h-3 ${isCurrent && sortDirection === 'asc' ? 'text-blue-600' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+      <svg className={`w-3 h-3 -mt-1 ${isCurrent && sortDirection === 'desc' ? 'text-blue-600' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </span>
+  );
+}
+
+export default function DataTable({ data, loading, selectedDate, onEpcPeriodChange, onExportDataChange, epcPeriod = 7, trendFilter = 'all', onTrendFilterChange, searchTerm = '', onSearchChange }: DataTableProps) {
   const [sortField, setSortField] = useState<keyof Advertiser | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [processedData, setProcessedData] = useState<Advertiser[]>([]);
-  const [epcPeriod, setEpcPeriod] = useState<EPCPeriod>(7);
-  const [epcTrendFilter, setEpcTrendFilter] = useState<string>('all');
   const [epcData, setEpcData] = useState<Record<string, { history: number[], labels: string[], trend?: string }>>({});
   const [loadingEpc, setLoadingEpc] = useState<Record<string, boolean>>({});
   const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
-  const itemsPerPage = 20;
-
-  // 搜索时自动跳转到第一页
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
-
-  // 检查EPC趋势
-  const checkEpcTrend = (epcHistory: number[]): 'up' | 'down' | 'flat' => {
-    if (!epcHistory || epcHistory.length < 2) return 'flat';
-    
-    const validData = epcHistory.filter(epc => !isNaN(epc) && epc !== null && epc !== undefined);
-    if (validData.length < 2) return 'flat';
-    
-    const first = validData[0];
-    const last = validData[validData.length - 1];
-    const change = ((last - first) / first) * 100;
-    
-    if (change > 5) return 'up';      // 上升超过5%
-    if (change < -5) return 'down';   // 下降超过5%
-    return 'flat';                    // 变化在±5%以内视为平稳
-  };
-
-  // 统一的数据管理useEffect
-  useEffect(() => {
-    if (!selectedDate) return;
-
-    if (epcTrendFilter === 'all') {
-      // "全部"模式：使用原始数据
-      console.log('[DataTable] 全部模式，使用原始数据, 广告商数量:', data.length);
-      setProcessedData(data);
-      setEpcData({}); // 清空EPC数据，后续会重新获取
-    } else {
-      // 筛选模式，获取筛选后的数据
-      const fetchFilteredData = async () => {
-        setLoadingEpc({ all: true });
-        try {
-          console.log('[DataTable] 发送趋势筛选请求:', epcTrendFilter);
-          const response = await fetch(`/api/epc`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              period: epcPeriod,
-              endDate: selectedDate,
-              trend: epcTrendFilter
-            }),
-          });
-          const result = await response.json();
-          console.log('[DataTable] 趋势筛选API返回:', result);
-          if (result.success) {
-            // 新格式：result.data 是EPC数据，result.advertisers 是广告商数组
-            if (result.advertisers) {
-              setProcessedData(result.advertisers);
-              setEpcData(result.data || {});
-            } else {
-              // 兼容旧格式
-              setProcessedData(result.data);
-              setEpcData({});
-            }
-          } else {
-            setProcessedData([]);
-            setEpcData({});
-          }
-        } catch (error) {
-          console.error('[DataTable] 获取EPC数据失败:', error);
-          setProcessedData([]);
-        } finally {
-          setLoadingEpc({});
-        }
-      };
-      fetchFilteredData();
-    }
-    // eslint-disable-next-line
-  }, [epcPeriod, selectedDate, epcTrendFilter, data]);
-
-  // 过滤数据（现在主要由后端完成，前端只做显示）
-  const filteredByTrend = useMemo(() => {
-    // 如果正在加载任何EPC数据，返回所有数据
-    if (Object.keys(loadingEpc).length > 0) {
-      return processedData;
-    }
-
-    // 当选择"全部"时，显示所有数据
-    // 当选择筛选条件时，后端已经返回了筛选后的数据，直接显示
-    return processedData;
-  }, [processedData, loadingEpc]);
-
-  // 搜索过滤
-  const searchFilteredData = useMemo(() => {
-    return filteredByTrend.filter(item =>
-      Object.values(item).some(value =>
-        String(value).toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
-  }, [filteredByTrend, searchTerm]);
 
   // 排序
   const sortedData = useMemo(() => {
-    return [...searchFilteredData].sort((a, b) => {
+    return [...data].sort((a, b) => {
       if (!sortField || !sortDirection) return 0;
-      
-    const aValue = a[sortField];
-    const bValue = b[sortField];
-    
-    if (sortField === '30_epc' || sortField === '30_rate' || sortField === 'monthly_visits') {
-      const aNum = typeof aValue === 'number' ? aValue : parseFloat(String(aValue).replace(/[^\d.-]/g, '')) || 0;
-      const bNum = typeof bValue === 'number' ? bValue : parseFloat(String(bValue).replace(/[^\d.-]/g, '')) || 0;
-      
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-    }
-    
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+      if (sortField === '30_epc' || sortField === '30_rate' || sortField === 'monthly_visits') {
+        const aNum = typeof aValue === 'number' ? aValue : parseFloat(String(aValue).replace(/[^\d.-]/g, '')) || 0;
+        const bNum = typeof bValue === 'number' ? bValue : parseFloat(String(bValue).replace(/[^\d.-]/g, '')) || 0;
+        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      }
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc' 
+          ? aValue.localeCompare(bValue, 'zh-CN')
+          : bValue.localeCompare(aValue, 'zh-CN');
+      }
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+      const aStr = String(aValue || '');
+      const bStr = String(bValue || '');
       return sortDirection === 'asc' 
-        ? aValue.localeCompare(bValue, 'zh-CN')
-        : bValue.localeCompare(aValue, 'zh-CN');
-    }
-    
-    if (typeof aValue === 'number' && typeof bValue === 'number') {
-      return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-    }
-    
-    const aStr = String(aValue || '');
-    const bStr = String(bValue || '');
-    return sortDirection === 'asc' 
-      ? aStr.localeCompare(bStr, 'zh-CN')
-      : bStr.localeCompare(aStr, 'zh-CN');
-  });
-  }, [searchFilteredData, sortField, sortDirection]);
+        ? aStr.localeCompare(bStr, 'zh-CN')
+        : bStr.localeCompare(aStr, 'zh-CN');
+    });
+  }, [data, sortField, sortDirection]);
 
-  // 分页
-  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = sortedData.slice(startIndex, startIndex + itemsPerPage);
-
-  // 当显示"全部"时，获取当前页的EPC数据
+  // 通知父组件当前可导出的数据
   useEffect(() => {
-    if (epcTrendFilter !== 'all' || paginatedData.length === 0 || !selectedDate) return;
+    if (onExportDataChange) {
+      onExportDataChange(sortedData);
+    }
+  }, [sortedData, onExportDataChange]);
 
-    const currentPageIds = paginatedData
+  // 获取当前页面广告商的EPC数据
+  useEffect(() => {
+    if (!selectedDate || data.length === 0) return;
+
+    const currentPageIds = data
       .map(item => item.adv_id)
       .filter(id => !epcData[id] && !loadingEpc[id]);
 
@@ -251,14 +181,13 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
     };
 
     fetchCurrentPageEpc();
-  }, [paginatedData, epcPeriod, selectedDate, epcTrendFilter]);
+  }, [data, epcPeriod, selectedDate]);
 
-  // 通知父组件当前可导出的数据
+  // 当epcPeriod变化时，清空现有EPC数据
   useEffect(() => {
-    if (onExportDataChange) {
-      onExportDataChange(sortedData);
-    }
-  }, [sortedData, onExportDataChange]);
+    setEpcData({});
+    setLoadingEpc({});
+  }, [epcPeriod]);
 
   // 处理排序
   const handleSort = (field: keyof Advertiser) => {
@@ -276,64 +205,6 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
       setSortField(field);
       setSortDirection('asc');
     }
-  };
-
-  // 获取排序图标
-  const SortIcon = ({ field }: { field: keyof Advertiser }) => {
-    const isCurrentField = sortField === field;
-    return (
-      <div className="flex flex-col -space-y-1">
-        <svg 
-          className={`w-3 h-3 ${isCurrentField && sortDirection === 'asc' ? 'text-green-500' : 'text-gray-400'}`} 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-        </svg>
-        <svg 
-          className={`w-3 h-3 ${isCurrentField && sortDirection === 'desc' ? 'text-green-500' : 'text-gray-400'}`} 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
-    );
-  };
-
-  // 格式化数字显示（K、M、B单位）
-  const formatNumber = (value: string | number): string => {
-    const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/[^\d.-]/g, '')) || 0;
-    
-    if (num >= 1000000000) {
-      return (num / 1000000000).toFixed(1) + 'B';
-    } else if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
-    } else {
-      return num.toString();
-    }
-  };
-
-  // 处理EPC周期变化
-  const handleEpcPeriodChange = (period: EPCPeriod) => {
-    setEpcPeriod(period);
-    setCurrentPage(1); // 重置到第一页
-    setEpcData({}); // 清空已获取的EPC数据
-    setLoadingEpc({}); // 清空加载状态
-    if (onEpcPeriodChange) {
-      onEpcPeriodChange(period);
-    }
-  };
-
-  // 处理EPC趋势筛选变化
-  const handleEpcTrendFilterChange = (filter: string) => {
-    console.log('[DataTable] 趋势筛选变化:', filter);
-    setEpcTrendFilter(filter);
-    setCurrentPage(1); // 重置到第一页
   };
 
   if (loading && data.length === 0) {
@@ -365,16 +236,18 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
         </div>
       )}
       
-      {/* 搜索和统计 */}
+      {/* 搜索和统计+筛选UI */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            {/* 搜索输入框 */}
             <input
               type="text"
               placeholder="搜索广告商..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => onSearchChange && onSearchChange(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ minWidth: 200 }}
             />
             <span className="text-sm text-gray-600">
               共 {sortedData.length} 条记录
@@ -388,7 +261,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 {([7, 14, 30] as EPCPeriod[]).map((period) => (
                   <button
                     key={period}
-                    onClick={() => handleEpcPeriodChange(period)}
+                    onClick={() => onEpcPeriodChange && onEpcPeriodChange(period)}
                     className={`px-3 py-1 text-sm font-medium transition-colors ${
                       epcPeriod === period
                         ? 'bg-blue-600 text-white'
@@ -400,15 +273,14 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 ))}
               </div>
             </div>
-            
             {/* EPC趋势筛选 */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">趋势筛选:</span>
               <div className="flex border border-gray-300 rounded-md overflow-hidden">
                 <button
-                  onClick={() => handleEpcTrendFilterChange('all')}
+                  onClick={() => onTrendFilterChange && onTrendFilterChange('all')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
-                    epcTrendFilter === 'all'
+                    trendFilter === 'all'
                       ? 'bg-blue-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
@@ -416,9 +288,9 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   全部
                 </button>
                 <button
-                  onClick={() => handleEpcTrendFilterChange('UPWARD')}
+                  onClick={() => onTrendFilterChange && onTrendFilterChange('UPWARD')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
-                    epcTrendFilter === 'UPWARD'
+                    trendFilter === 'UPWARD'
                       ? 'bg-green-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
@@ -426,9 +298,9 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   上升
                 </button>
                 <button
-                  onClick={() => handleEpcTrendFilterChange('DOWNWARD')}
+                  onClick={() => onTrendFilterChange && onTrendFilterChange('DOWNWARD')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
-                    epcTrendFilter === 'DOWNWARD'
+                    trendFilter === 'DOWNWARD'
                       ? 'bg-red-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
@@ -436,9 +308,9 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                   下降
                 </button>
                 <button
-                  onClick={() => handleEpcTrendFilterChange('STABLE')}
+                  onClick={() => onTrendFilterChange && onTrendFilterChange('STABLE')}
                   className={`px-3 py-1 text-sm font-medium transition-colors ${
-                    epcTrendFilter === 'STABLE'
+                    trendFilter === 'STABLE'
                       ? 'bg-gray-600 text-white'
                       : 'bg-white text-gray-700 hover:bg-gray-50'
                   }`}
@@ -447,26 +319,8 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                 </button>
               </div>
             </div>
-            
-            <div className="text-sm text-gray-600">
-              第 {currentPage} 页，共 {totalPages} 页
-            </div>
           </div>
         </div>
-        
-        {/* 趋势分析提示 */}
-        {epcTrendFilter !== 'all' && sortedData.length === 0 && (
-          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-            <div className="flex items-center">
-              <svg className="w-4 h-4 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              <span className="text-sm text-yellow-800">
-                当前数据不足以进行有效的趋势分析。趋势分析需要至少2天的历史数据，请等待更多数据后再使用趋势筛选功能。
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 表格 */}
@@ -489,19 +343,19 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('monthly_visits')}>
                 <div className="flex items-center justify-center gap-2">
                   <span className="group-hover:text-gray-900">月访问量</span>
-                  <SortIcon field="monthly_visits" />
+                  <SortIcon field="monthly_visits" sortField={sortField} sortDirection={sortDirection} />
                 </div>
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('30_epc')}>
                 <div className="flex items-center justify-center gap-2">
                   <span className="group-hover:text-gray-900">30天EPC</span>
-                  <SortIcon field="30_epc" />
+                  <SortIcon field="30_epc" sortField={sortField} sortDirection={sortDirection} />
                 </div>
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer group hover:bg-gray-50" style={{ width: '100px', minWidth: '100px', maxWidth: '100px' }} onClick={() => handleSort('30_rate')}>
                 <div className="flex items-center justify-center gap-2">
                   <span className="group-hover:text-gray-900">30天转化率</span>
-                  <SortIcon field="30_rate" />
+                  <SortIcon field="30_rate" sortField={sortField} sortDirection={sortDirection} />
                 </div>
               </th>
               <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '180px', minWidth: '180px', maxWidth: '180px' }}>
@@ -510,7 +364,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedData.map((item, rowIdx) => (
+            {sortedData.map((item, rowIdx) => (
               <tr key={item.adv_id} className="hover:bg-gray-50 group h-20">
                 {/* 广告商信息 */}
                 <td
@@ -756,102 +610,6 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
           </tbody>
         </table>
       </div>
-
-      {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-700">
-              显示第 {startIndex + 1} 到 {Math.min(startIndex + itemsPerPage, sortedData.length)} 条，共 {sortedData.length} 条
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                上一页
-              </button>
-              
-              {/* 页码显示 */}
-              <div className="flex items-center space-x-1">
-                {(() => {
-                  let start = 1;
-                  let end = totalPages;
-                  if (totalPages > 5) {
-                    if (currentPage <= 3) {
-                      start = 1;
-                      end = 5;
-                  } else if (currentPage >= totalPages - 2) {
-                      start = totalPages - 4;
-                      end = totalPages;
-                  } else {
-                      start = currentPage - 2;
-                      end = currentPage + 2;
-                  }
-                  }
-                  const pages = [];
-                  for (let i = start; i <= end; i++) {
-                    pages.push(i);
-                  }
-                  return pages.map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-1 text-sm border rounded-md ${currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  ));
-                })()}
-              </div>
-              
-              <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                下一页
-              </button>
-              
-              {/* 跳页功能 */}
-              <div className="flex items-center space-x-2 ml-4">
-                <span className="text-sm text-gray-600">跳转到:</span>
-                <input
-                  type="number"
-                  min="1"
-                  max={totalPages}
-                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="页码"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      const targetPage = parseInt(e.currentTarget.value);
-                      if (targetPage >= 1 && targetPage <= totalPages) {
-                        setCurrentPage(targetPage);
-                        e.currentTarget.value = '';
-                      }
-                    }
-                  }}
-                />
-                <span className="text-sm text-gray-500">/ {totalPages}</span>
-                <button
-                  onClick={(e) => {
-                    const input = e.currentTarget.previousElementSibling?.previousElementSibling as HTMLInputElement;
-                    const targetPage = parseInt(input.value);
-                    if (targetPage >= 1 && targetPage <= totalPages) {
-                      setCurrentPage(targetPage);
-                      input.value = '';
-                    }
-                  }}
-                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  跳转
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 } 

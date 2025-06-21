@@ -4,9 +4,9 @@ import { DatabaseService, prisma } from '@/lib/database';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { adv_ids, period, endDate, trend } = body;
+    const { adv_ids, period, endDate, trend, page = 1, pageSize = 20 } = body;
 
-    console.log(`[/api/epc] 收到POST请求, adv_ids数量: ${adv_ids?.length}, period: ${period}, endDate: ${endDate}, trend: ${trend}`);
+    console.log(`[/api/epc] 收到POST请求, adv_ids数量: ${adv_ids?.length}, period: ${period}, endDate: ${endDate}, trend: ${trend}, page: ${page}, pageSize: ${pageSize}`);
 
     if (!period || typeof period !== 'number') {
       return NextResponse.json({ success: false, message: 'period is required and must be a number' }, { status: 400 });
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       console.log('\n' + '='.repeat(80));
       console.log('[/api/epc] 所有广告商的趋势状态:');
       console.log('-'.repeat(80));
-      console.log(JSON.stringify(allTrends.map(t => ({
+      console.log(JSON.stringify(allTrends.map((t: any) => ({
         advId: t.advertiser.advId,
         trend7Day: t.epcTrendCategory7Day,
         trend14Day: t.epcTrendCategory14Day,
@@ -83,32 +83,84 @@ export async function POST(request: NextRequest) {
       if (trends.length === 0) {
         return NextResponse.json({
           success: true,
-          data: []
+          data: [],
+          advertisers: [],
+          total: 0
         });
       }
 
       // 获取符合条件的广告商的完整信息
-      const advertisers = await DatabaseService.getAdvertiserDataByDate(endDateObj);
+      const startOfDay = new Date(endDateObj.toISOString().split('T')[0] + 'T00:00:00.000Z');
+      const endOfDay = new Date(endDateObj.toISOString().split('T')[0] + 'T23:59:59.999Z');
+      
+      const allAdvertisers = await prisma.advertiser.findMany({
+        include: {
+          dailyEpc: {
+            where: {
+              date: {
+                gte: startOfDay,
+                lte: endOfDay,
+              },
+            },
+          },
+          entityTrend: true,
+        },
+      });
       
       // 筛选出符合趋势条件的广告商
-      const filteredAdvertisers = advertisers.filter(advertiser => {
-        return trends.some(trend => trend.advertiser.advId === advertiser.adv_id);
-      });
+      const allFilteredAdvertisers = allAdvertisers
+        .filter((advertiser: any) => {
+          return trends.some((trend: any) => trend.advertiser.advId === advertiser.advId);
+        })
+        .map((advertiser: any) => {
+          const epcData = advertiser.dailyEpc[0];
+          const trend = advertiser.entityTrend;
+          return {
+            adv_logo: advertiser.advLogo || '',
+            adv_name: advertiser.advName,
+            adv_id: advertiser.advId,
+            m_id: advertiser.mId || '',
+            adv_category: advertiser.advCategory || '',
+            mailing_region: advertiser.mailingRegion || '',
+            adv_type: advertiser.advType || '',
+            monthly_visits: advertiser.monthlyVisits || '',
+            rd: advertiser.rd || '',
+            '30_epc': advertiser.epc30Day || epcData?.epcValue || 0,
+            '30_rate': advertiser.rate30Day || '',
+            aff_ba: advertiser.affBa || '',
+            aff_ba_unit: advertiser.affBaUnit || '',
+            aff_ba_text: advertiser.affBaText || '',
+            approval_type: advertiser.approvalType || '',
+            approval_type_text: advertiser.approvalTypeText || '',
+            join_status: advertiser.joinStatus || '',
+            join_status_text: advertiser.joinStatusText || '',
+            trend_7_day: trend?.epcTrendCategory7Day || 'UNKNOWN',
+            trend_14_day: trend?.epcTrendCategory14Day || 'UNKNOWN',
+            trend_30_day: trend?.epcTrendCategory30Day || 'UNKNOWN',
+          };
+        });
 
-      console.log(`[/api/epc] 找到 ${filteredAdvertisers.length} 个符合趋势条件的广告商`);
+      console.log(`[/api/epc] 找到 ${allFilteredAdvertisers.length} 个符合趋势条件的广告商`);
       console.log('[/api/epc] 符合趋势条件的广告商详细信息:');
-      console.log(JSON.stringify(filteredAdvertisers, null, 2));
+      console.log(JSON.stringify(allFilteredAdvertisers, null, 2));
 
       // 如果没有符合条件的广告商，返回空对象
-      if (filteredAdvertisers.length === 0) {
+      if (allFilteredAdvertisers.length === 0) {
         return NextResponse.json({
           success: true,
-          data: {}
+          data: {},
+          advertisers: [],
+          total: 0
         });
       }
 
+      // 对筛选后的数据进行分页
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginatedAdvertisers = allFilteredAdvertisers.slice(startIndex, endIndex);
+
       // 获取这些广告商的EPC历史数据
-      const filteredAdvIds = filteredAdvertisers.map(adv => adv.adv_id);
+      const filteredAdvIds = paginatedAdvertisers.map((adv: any) => adv.adv_id);
       const startDate = new Date(endDateObj);
       startDate.setDate(startDate.getDate() - period + 1);
       
@@ -138,7 +190,7 @@ export async function POST(request: NextRequest) {
       const data: Record<string, { history: number[]; labels: string[]; trend?: string }> = {};
       
       for (const advId of filteredAdvIds) {
-        const advEpcData = epcData.filter(d => d.advertiser.advId === advId);
+        const advEpcData = epcData.filter((d: any) => d.advertiser.advId === advId);
         const history: number[] = [];
         const labels: string[] = [];
         
@@ -148,14 +200,14 @@ export async function POST(request: NextRequest) {
           date.setDate(date.getDate() + i);
           labels.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
           
-          const dataForDate = advEpcData.find(d => 
+          const dataForDate = advEpcData.find((d: any) => 
             d.date.toDateString() === date.toDateString()
           );
           history.push(dataForDate ? Number(dataForDate.epcValue) : 0);
         }
         
         // 获取后端计算的趋势
-        const trendData = trends.find(t => t.advertiser.advId === advId);
+        const trendData = trends.find((t: any) => t.advertiser.advId === advId);
         let backendTrend: string | undefined;
         if (trendData) {
           switch (period) {
@@ -179,7 +231,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data,
-        advertisers: filteredAdvertisers // 同时返回广告商信息，供前端使用
+        advertisers: paginatedAdvertisers, // 返回分页后的广告商信息
+        total: allFilteredAdvertisers.length // 返回总数
       });
     }
 
@@ -209,7 +262,7 @@ export async function POST(request: NextRequest) {
       },
       orderBy: {
         date: 'asc'
-      }
+      },
     });
 
     // console.log(`[/api/epc] 查询到的EPC历史数据:`, JSON.stringify(epcData.map(d => ({

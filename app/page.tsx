@@ -34,13 +34,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [epcTimeRange, setEpcTimeRange] = useState<number>(7);
+  const [epcTimeRange, setEpcTimeRange] = useState<7 | 14 | 30>(7);
   const [exportData, setExportData] = useState<Advertiser[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [jumpPage, setJumpPage] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [trendFilter, setTrendFilter] = useState('all');
 
   // 获取今天的日期作为默认值
   useEffect(() => {
@@ -55,8 +57,47 @@ export default function Home() {
       setError(null);
       setAdvertisers([]);
       setCurrentPage(page);
-      console.log(`[page.tsx] 正在从数据库加载数据，日期: ${selectedDate}，页码: ${page}`);
-      const response = await fetch(`/api/data?date=${selectedDate || new Date().toISOString().split('T')[0]}&page=${page}&pageSize=${pageSize}`);
+
+      // 如果有趋势筛选，调用EPC接口获取所有符合条件的数据（不分页）
+      if (trendFilter !== 'all') {
+        const response = await fetch('/api/epc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            period: epcTimeRange,
+            endDate: selectedDate || new Date().toISOString().split('T')[0],
+            trend: trendFilter,
+            page: page,
+            pageSize: pageSize
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('加载筛选数据失败');
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+          setAdvertisers(result.advertisers || []);
+          setTotal(result.total || 0);
+          console.log(`[page.tsx] 成功加载了 ${result.advertisers?.length || 0} 条筛选后的数据，总数: ${result.total}`);
+        } else {
+          setAdvertisers([]);
+          setTotal(0);
+          console.log('[page.tsx] 没有找到符合趋势条件的数据');
+        }
+        return;
+      }
+
+      // 正常加载数据（无趋势筛选，使用分页）
+      const params = new URLSearchParams({
+        date: selectedDate || new Date().toISOString().split('T')[0],
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (searchTerm) params.append('search', searchTerm);
+      if (epcTimeRange) params.append('epcPeriod', String(epcTimeRange));
+      const response = await fetch(`/api/data?${params.toString()}`);
       if (!response.ok) {
         throw new Error('加载数据失败');
       }
@@ -84,7 +125,7 @@ export default function Home() {
     if (selectedDate) {
       loadDataFromDatabase(1);
     }
-  }, [selectedDate, pageSize]);
+  }, [selectedDate, pageSize, searchTerm, epcTimeRange, trendFilter]);
 
   const fetchData = async () => {
     try {
@@ -179,8 +220,9 @@ export default function Home() {
   };
 
   // 处理EPC时间范围变化
-  const handleEpcPeriodChange = (period: number) => {
+  const handleEpcPeriodChange = (period: 7 | 14 | 30) => {
     setEpcTimeRange(period);
+    setCurrentPage(1);
   };
 
   // 处理分页切换
@@ -194,12 +236,20 @@ export default function Home() {
     setCurrentPage(1);
   };
 
+  // 处理搜索输入
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    setCurrentPage(1);
+  };
+
+  // 处理趋势筛选变化
+  const handleTrendFilterChange = (trend: string) => {
+    setTrendFilter(trend);
+    setCurrentPage(1);
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  function getPageList(current: number, total: number) {
-    if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
-    return [1, 2, 3, 4, '...', total];
-  }
-  const pageList = getPageList(currentPage, totalPages);
+  
   const handleJump = () => {
     const page = Math.max(1, Math.min(totalPages, Number(jumpPage)));
     if (!isNaN(page)) handlePageChange(page);
@@ -418,47 +468,154 @@ export default function Home() {
           onEpcPeriodChange={handleEpcPeriodChange}
           onExportDataChange={setExportData}
           selectedDate={selectedDate}
+          epcPeriod={epcTimeRange}
+          trendFilter={trendFilter}
+          onTrendFilterChange={handleTrendFilterChange}
+          searchTerm={searchTerm}
+          onSearchChange={handleSearch}
         />
-        {/* 数字分页控件+跳转 */}
-        <div className="flex justify-center items-center mt-6 gap-2">
-          {pageList.map((p, idx) =>
-            p === '...'
-              ? <span key={idx} className="px-2 text-gray-400">...</span>
-              : <button
-                  key={p}
-                  onClick={() => handlePageChange(Number(p))}
-                  disabled={p === currentPage || loading}
-                  className={`px-3 py-1 rounded ${p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-blue-100'} transition-colors`}
-                >{p}</button>
-          )}
-          <span className="ml-4 text-gray-600">共 {totalPages} 页</span>
-          <input
-            type="number"
-            min={1}
-            max={totalPages}
-            value={jumpPage}
-            onChange={e => setJumpPage(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleJump(); }}
-            className="w-16 px-2 py-1 border rounded ml-2"
-            placeholder="跳转页"
-          />
+        {/* 分页控件重写区 */}
+        <div className="flex flex-wrap justify-center items-center mt-6 gap-2">
+          {/* 上一页按钮 */}
           <button
-            onClick={handleJump}
-            className="px-2 py-1 bg-blue-500 text-white rounded ml-1"
-            disabled={!jumpPage || isNaN(Number(jumpPage)) || Number(jumpPage) < 1 || Number(jumpPage) > totalPages}
+            onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1 || loading}
+            className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            跳转
+            上一页
           </button>
-          <select
-            value={pageSize}
-            onChange={e => handlePageSizeChange(Number(e.target.value))}
-            className="ml-4 px-2 py-1 border rounded"
+
+          {/* 滑动窗口页码 */}
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+            /**
+             * 生成分页页码的核心函数
+             * @param currentPage - 当前页码
+             * @param totalPages - 总页数
+             * @param visiblePagesCount - 在当前页周围希望看到的页码数量（不包括第一页、最后一页和省略号）
+             * @returns {Array<number|string>} - 用于渲染的页码和省略号数组
+             */
+            const getPaginationNumbers = (currentPage: number, totalPages: number, visiblePagesCount: number = 5) => {
+              // 1. 如果总页数很少，不足以需要省略号，则直接显示所有页码
+              if (totalPages <= visiblePagesCount + 2) { // 例如 total=7, visible=5 -> [1,2,3,4,5,6,7]
+                return Array.from({ length: totalPages }, (_, i) => i + 1);
+              }
+
+              const pages: (number | string)[] = [];
+
+              // 2. 处理当前页在 "中间区域" 的情况
+              // 例如 total=20, current=10 -> [1, '...', 9, 10, 11, '...', 20]
+              const sidePages = Math.floor((visiblePagesCount - 1) / 2); // 核心页码两边的数量
+              let startPage = currentPage - sidePages;
+              let endPage = currentPage + sidePages;
+              
+              // 保证中间页码数量始终为 visiblePagesCount
+              if(visiblePagesCount % 2 === 0) {
+                 endPage++;
+              }
+
+              // 3. 处理当前页靠近 "起始" 的情况
+              // 例如 total=20, current=3 -> [1, 2, 3, 4, 5, '...', 20]
+              if (currentPage - 1 < visiblePagesCount) {
+                  startPage = 2;
+                  endPage = visiblePagesCount + 1;
+              }
+              
+              // 4. 处理当前页靠近 "末尾" 的情况
+              // 例如 total=20, current=18 -> [1, '...', 16, 17, 18, 19, 20]
+              if(totalPages - currentPage < visiblePagesCount) {
+                  startPage = totalPages - visiblePagesCount;
+                  endPage = totalPages - 1;
+              }
+              
+              pages.push(1); // 始终显示第一页
+
+              if (startPage > 2) {
+                pages.push('...'); // 左侧省略号
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(i);
+              }
+
+              if (endPage < totalPages - 1) {
+                // 为了避免React的key冲突，在第二个省略号后加一个空格
+                pages.push('... '); // 右侧省略号
+              }
+              
+              pages.push(totalPages); // 始终显示最后一页
+
+              return pages;
+            };
+
+            const pages = getPaginationNumbers(currentPage, totalPages, 3); // visiblePagesCount=3 意味着中间部分是 [prev, current, next]
+            
+            return pages.map((p, idx) =>
+              typeof p === 'string'
+                ? <span key={`${p}-${idx}`} className="px-2 text-gray-400">...</span>
+                : <button
+                    key={p}
+                    onClick={() => handlePageChange(Number(p))}
+                    disabled={p === currentPage || loading}
+                    className={`px-3 py-1 rounded transition-colors ${
+                      p === currentPage 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-gray-200 text-gray-600 hover:bg-blue-100'
+                    }`}
+                  >{p}</button>
+            );
+          })()}
+
+          {/* 下一页按钮 */}
+          <button
+            onClick={() => handlePageChange(Math.min(Math.max(1, Math.ceil(total / pageSize)), currentPage + 1))}
+            disabled={currentPage === Math.max(1, Math.ceil(total / pageSize)) || loading}
+            className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {[5, 10, 20, 50, 100].map(size => (
-              <option key={size} value={size}>{size}条/页</option>
-            ))}
-          </select>
+            下一页
+          </button>
+
+          {/* 页码信息 */}
+          <span className="ml-4 text-gray-600">共 {Math.max(1, Math.ceil(total / pageSize))} 页</span>
+
+          {/* 跳转功能 */}
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-sm text-gray-600">跳转到:</span>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, Math.ceil(total / pageSize))}
+              value={jumpPage}
+              onChange={e => setJumpPage(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleJump(); }}
+              className="w-16 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="页码"
+            />
+            <button
+              onClick={handleJump}
+              className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              disabled={!jumpPage || isNaN(Number(jumpPage)) || Number(jumpPage) < 1 || Number(jumpPage) > Math.max(1, Math.ceil(total / pageSize))}
+            >
+              跳转
+            </button>
+          </div>
+
+          {/* 每页条数选择 */}
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-sm text-gray-600">每页:</span>
+            <select
+              value={pageSize}
+              onChange={e => handlePageSizeChange(Number(e.target.value))}
+              className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {[5, 10, 20, 50, 100].map(size => (
+                <option key={size} value={size}>{size}条</option>
+              ))}
+            </select>
+          </div>
         </div>
+        {/* 分页控件重写区 END */}
       </div>
     </main>
   );

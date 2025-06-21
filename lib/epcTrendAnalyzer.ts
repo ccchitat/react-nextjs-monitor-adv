@@ -54,12 +54,12 @@ export function calculateTrend(epcValues: number[]): {
   
   // 判断趋势类型
   let trendCategory: ETrendType;
-  if (maxDeviation > TREND_THRESHOLDS.SLOPE.VOLATILE) {
-    trendCategory = ETrendType.VOLATILE;
-  } else if (slope > TREND_THRESHOLDS.SLOPE.UPWARD) {
+  if (slope > TREND_THRESHOLDS.SLOPE.UPWARD) {
     trendCategory = ETrendType.UPWARD;
   } else if (slope < TREND_THRESHOLDS.SLOPE.DOWNWARD) {
     trendCategory = ETrendType.DOWNWARD;
+  } else if (maxDeviation > TREND_THRESHOLDS.SLOPE.VOLATILE) {
+    trendCategory = ETrendType.VOLATILE;
   } else {
     trendCategory = ETrendType.STABLE;
   }
