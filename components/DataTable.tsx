@@ -107,20 +107,20 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
   // 获取当前页面广告商的EPC数据
   useEffect(() => {
     if (!selectedDate || data.length === 0) return;
-
+    
     const currentPageIds = data
       .map(item => item.adv_id)
       .filter(id => !epcData[id] && !loadingEpc[id]);
-
+      
     if (currentPageIds.length === 0) return;
-
+    
     const fetchCurrentPageEpc = async () => {
       setLoadingEpc(prev => {
         const newLoading = { ...prev };
         currentPageIds.forEach(id => { newLoading[id] = true; });
         return newLoading;
       });
-
+      
       try {
         const response = await fetch(`/api/epc`, {
           method: 'POST',
@@ -145,7 +145,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
         });
       }
     };
-
+    
     fetchCurrentPageEpc();
   }, [data, epcPeriod, selectedDate]);
 
@@ -181,9 +181,9 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <span className="ml-2">正在加载数据...</span>
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <span className="ml-2">正在加载数据...</span>
         </div>
       </div>
     );
@@ -208,7 +208,7 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
             </div>
           </div>
         </div>
-        <div className="text-center p-8 text-gray-500">
+      <div className="text-center p-8 text-gray-500">
           暂无数据，请尝试更换搜索条件或日期
         </div>
       </div>
@@ -551,22 +551,22 @@ export default function DataTable({ data, loading, selectedDate, onEpcPeriodChan
                             const trend = itemEpcData.trend;
                             let trendText = '-';
                             let trendColor = 'text-gray-400';
-                            if (trend === 'UPWARD') {
+                                if (trend === 'UPWARD') {
                               trendText = '上升';
                               trendColor = 'text-green-600';
-                            } else if (trend === 'DOWNWARD') {
+                                } else if (trend === 'DOWNWARD') {
                               trendText = '下降';
                               trendColor = 'text-red-600';
                             } else if (trend === 'STABLE') {
                               trendText = '平稳';
                               trendColor = 'text-gray-600';
-                            } else if (trend === 'VOLATILE') {
+                                } else if (trend === 'VOLATILE') {
                               trendText = '波动';
                               trendColor = 'text-yellow-600';
                             }
-                            return (
+                              return (
                               <span className={`ml-2 text-xs font-bold ${trendColor}`}>{trendText}</span>
-                            );
+                              );
                           })()}
                         </div>
                         {/* 详细工具提示 */}

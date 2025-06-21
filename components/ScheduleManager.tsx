@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 
 interface ScheduleConfig {
+  mode: 'interval' | 'time';
   interval: number;
   enabled: boolean;
   lastRun: string | null;
@@ -18,7 +19,8 @@ interface ScheduleManagerProps {
 export default function ScheduleManager({ onScheduleChange }: ScheduleManagerProps) {
   const [isScheduled, setIsScheduled] = useState(false);
   const [config, setConfig] = useState<ScheduleConfig>({
-    interval: 1440, // 默认24小时
+    mode: 'interval',
+    interval: 1, // 改为1分钟
     enabled: false,
     lastRun: null,
     nextRun: null,
@@ -31,24 +33,53 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
   // 加载定时任务状态
   const loadScheduleStatus = async () => {
     try {
+      console.log('🔄 正在加载定时任务状态...');
       const response = await fetch('/api/schedule');
       if (response.ok) {
         const result = await response.json();
+        console.log('📡 服务器返回的状态:', result);
         if (result.success) {
+          console.log('✅ 设置状态:', { isScheduled: result.data.isScheduled, config: result.data.config });
           setIsScheduled(result.data.isScheduled);
           setConfig(result.data.config);
+        } else {
+          console.error('❌ 服务器返回错误:', result.message);
         }
+      } else {
+        console.error('❌ 请求失败:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('加载定时任务状态失败:', error);
+      console.error('❌ 加载定时任务状态失败:', error);
     }
   };
 
   useEffect(() => {
+    // 立即加载状态
     loadScheduleStatus();
-    // 每30秒刷新一次状态
-    const interval = setInterval(loadScheduleStatus, 30000);
-    return () => clearInterval(interval);
+    
+    // 每10秒刷新一次状态
+    const interval = setInterval(loadScheduleStatus, 10000);
+    
+    // 页面可见性变化时刷新状态
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadScheduleStatus();
+      }
+    };
+    
+    // 窗口获得焦点时刷新状态
+    const handleFocus = () => {
+      loadScheduleStatus();
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // 启动定时任务
@@ -62,6 +93,7 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'start',
+          mode: config.mode,
           interval: config.interval,
           scheduledTime: config.scheduledTime
         }),
@@ -110,7 +142,7 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
   };
 
   // 更新配置
-  const updateConfig = async (newInterval: number, newScheduledTime: string) => {
+  const updateConfig = async (newMode: 'interval' | 'time', newInterval: number, newScheduledTime: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -120,6 +152,7 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'update',
+          mode: newMode,
           interval: newInterval,
           scheduledTime: newScheduledTime
         }),
@@ -159,6 +192,28 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
     }
   };
 
+  // 时间转换辅助函数
+  const timeToMinutes = (timeString: string): number => {
+    const [hours, minutes] = timeString.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const minutesToTime = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  };
+
+  const getTimeDescription = (timeString: string): string => {
+    const [hours] = timeString.split(':').map(Number);
+    if (hours === 0) return '午夜';
+    if (hours < 6) return '凌晨';
+    if (hours < 12) return '上午';
+    if (hours === 12) return '中午';
+    if (hours < 18) return '下午';
+    return '晚上';
+  };
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
@@ -171,6 +226,16 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
           }`}>
             {isScheduled ? '运行中' : '已停止'}
           </span>
+          <button
+            onClick={loadScheduleStatus}
+            disabled={loading}
+            className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 transition-colors"
+            title="刷新状态"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -181,39 +246,89 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
       )}
 
       <div className="space-y-4">
-        {/* 间隔时间设置 */}
+        {/* 执行模式选择 */}
         <div className="flex items-center gap-4">
           <label className="text-sm font-medium text-gray-700">
-            抓取间隔:
+            执行模式:
           </label>
           <select
-            value={config.interval}
-            onChange={(e) => updateConfig(Number(e.target.value), config.scheduledTime)}
+            value={config.mode}
+            onChange={(e) => updateConfig(e.target.value as 'interval' | 'time', config.interval, config.scheduledTime)}
             disabled={loading}
             className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            <option value={60}>1小时</option>
-            <option value={120}>2小时</option>
-            <option value={240}>4小时</option>
-            <option value={480}>8小时</option>
-            <option value={720}>12小时</option>
-            <option value={1440}>24小时</option>
+            <option value="interval">按间隔执行</option>
+            <option value="time">按时间执行</option>
           </select>
         </div>
 
-        {/* 执行时间设置 */}
+        {/* 间隔时间设置 */}
         <div className="flex items-center gap-4">
           <label className="text-sm font-medium text-gray-700">
-            执行时间:
+            {config.mode === 'interval' ? '执行间隔:' : '执行时间:'}
           </label>
-          <input
-            type="time"
-            value={config.scheduledTime}
-            onChange={(e) => updateConfig(config.interval, e.target.value)}
-            disabled={loading}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          />
-          <span className="text-sm text-gray-500">（每天）</span>
+          {config.mode === 'interval' ? (
+            <select
+              value={config.interval}
+              onChange={(e) => updateConfig(config.mode, Number(e.target.value), config.scheduledTime)}
+              disabled={loading}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              <option value={1}>1分钟</option>
+              <option value={5}>5分钟</option>
+              <option value={15}>15分钟</option>
+              <option value={30}>30分钟</option>
+              <option value={60}>1小时</option>
+              <option value={120}>2小时</option>
+              <option value={240}>4小时</option>
+              <option value={480}>8小时</option>
+              <option value={720}>12小时</option>
+              <option value={1440}>24小时</option>
+            </select>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={config.scheduledTime}
+                onChange={(e) => updateConfig(config.mode, config.interval, e.target.value)}
+                disabled={loading}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 w-36"
+                style={{ minWidth: '140px' }}
+              />
+              <span className="text-sm text-gray-500">
+                ({getTimeDescription(config.scheduledTime)})
+              </span>
+              <div className="flex gap-1 ml-2">
+                <button
+                  type="button"
+                  onClick={() => updateConfig(config.mode, config.interval, '09:00')}
+                  disabled={loading}
+                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 quick-time-btn"
+                  title="上午9点"
+                >
+                  9点
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateConfig(config.mode, config.interval, '14:00')}
+                  disabled={loading}
+                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 quick-time-btn"
+                  title="下午2点"
+                >
+                  14点
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateConfig(config.mode, config.interval, '02:00')}
+                  disabled={loading}
+                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 quick-time-btn"
+                  title="凌晨2点"
+                >
+                  2点
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 状态信息 */}
@@ -232,8 +347,12 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
         <div className="bg-blue-50 p-3 rounded-md">
           <div className="text-sm text-blue-800">
             <p><strong>当前配置:</strong></p>
-            <p>• 间隔: {formatInterval(config.interval)}</p>
-            <p>• 执行时间: 每天 {config.scheduledTime}</p>
+            <p>• 执行模式: {config.mode === 'interval' ? '按间隔执行' : '按时间执行'}</p>
+            {config.mode === 'interval' ? (
+              <p>• 执行间隔: {formatInterval(config.interval)}</p>
+            ) : (
+              <p>• 执行时间: 每天 {config.scheduledTime}</p>
+            )}
             <p>• 时区: {config.timezone}</p>
           </div>
         </div>
@@ -246,7 +365,7 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
               disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
             >
-              {loading ? '启动中...' : '启动定时抓取'}
+              {loading ? '启动中...' : '启动定时任务'}
             </button>
           ) : (
             <button
@@ -254,7 +373,7 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
               disabled={loading}
               className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
             >
-              {loading ? '停止中...' : '停止定时抓取'}
+              {loading ? '停止中...' : '停止定时任务'}
             </button>
           )}
         </div>
@@ -263,11 +382,12 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
         <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-md">
           <p className="mb-1"><strong>说明:</strong></p>
           <ul className="space-y-1">
-            <li>• 定时抓取会在后台自动运行，即使关闭浏览器也会继续</li>
-            <li>• 每次抓取都会记录到抓取日志中</li>
-            <li>• 默认每天上午9点执行一次，可自定义时间</li>
+            <li>• 定时任务会在后台自动运行，即使关闭浏览器也会继续</li>
+            <li>• 按间隔执行：立即开始，按设定间隔重复执行</li>
+            <li>• 按时间执行：每天在指定时间执行一次</li>
+            <li>• 每次执行都会在服务器控制台打印信息</li>
             <li>• 服务器重启后需要重新启动定时任务</li>
-            <li>• 建议使用24小时间隔，避免过于频繁的请求</li>
+            <li>• 测试完成后建议停止任务或修改为正常间隔</li>
           </ul>
         </div>
       </div>

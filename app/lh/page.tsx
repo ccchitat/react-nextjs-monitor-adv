@@ -529,7 +529,7 @@ export default function Home() {
               value={jumpPage}
               onChange={e => setJumpPage(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleJump(); }}
-              className="w-16 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+              className="w-20 px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
               placeholder="页码"
             />
             <button

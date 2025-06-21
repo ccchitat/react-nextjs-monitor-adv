@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DatabaseService } from '@/lib/database';
 
 // 全局变量存储定时任务状态
 let scheduledTask: NodeJS.Timeout | null = null;
 let isScheduled = false;
 let scheduleConfig = {
-  interval: 1440, // 默认24小时（1440分钟）
+  mode: 'interval' as 'interval' | 'time',
+  interval: 1,
+  scheduledTime: '09:00',
   enabled: false,
   lastRun: null as Date | null,
   nextRun: null as Date | null,
-  scheduledTime: '09:00', // 默认每天上午9点执行
-  timezone: 'Asia/Shanghai' // 默认中国时区
+  timezone: 'Asia/Shanghai'
 };
 
 export async function GET() {
+  console.log('📋 GET /api/schedule - 当前状态:', { isScheduled, config: scheduleConfig });
+  
   return NextResponse.json({
     success: true,
     data: {
@@ -25,15 +27,15 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { action, interval, scheduledTime } = await request.json();
+    const { action, mode, interval, scheduledTime } = await request.json();
     
     switch (action) {
       case 'start':
-        return await startScheduledTask(interval, scheduledTime);
+        return await startScheduledTask(mode, interval, scheduledTime);
       case 'stop':
         return await stopScheduledTask();
       case 'update':
-        return await updateScheduleConfig(interval, scheduledTime);
+        return await updateScheduleConfig(mode, interval, scheduledTime);
       default:
         return NextResponse.json({ 
           success: false, 
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function startScheduledTask(intervalMinutes: number = 1440, scheduledTime: string = '09:00') {
+async function startScheduledTask(mode: 'interval' | 'time' = 'interval', intervalMinutes: number = 1, scheduledTime: string = '09:00') {
   if (isScheduled) {
     return NextResponse.json({ 
       success: false, 
@@ -63,39 +65,45 @@ async function startScheduledTask(intervalMinutes: number = 1440, scheduledTime:
       clearInterval(scheduledTask);
     }
 
-    // 计算下次执行时间
-    const nextRunTime = calculateNextRunTime(scheduledTime);
-    const now = new Date();
-    const timeUntilNextRun = nextRunTime.getTime() - now.getTime();
+    let nextRunTime: Date;
 
-    // 如果下次执行时间已经过了，立即执行一次
-    if (timeUntilNextRun <= 0) {
+    if (mode === 'interval') {
+      // 按间隔执行：立即执行，然后按间隔重复
       await runScheduledCrawl();
-      // 重新计算下次执行时间
-      const newNextRunTime = calculateNextRunTime(scheduledTime);
-      const newTimeUntilNextRun = newNextRunTime.getTime() - now.getTime();
+      nextRunTime = new Date(Date.now() + intervalMinutes * 60 * 1000);
+      
+      // 设置重复定时器
+      scheduledTask = setInterval(async () => {
+        await runScheduledCrawl();
+      }, intervalMinutes * 60 * 1000);
+      
+    } else {
+      // 按时间执行：等待到指定时间执行
+      nextRunTime = calculateNextRunTime(scheduledTime);
+      const now = new Date();
+      const timeUntilNextRun = nextRunTime.getTime() - now.getTime();
+      
+      // 如果下次执行时间已经过了，立即执行一次
+      if (timeUntilNextRun <= 0) {
+        await runScheduledCrawl();
+        // 重新计算下次执行时间（明天同一时间）
+        nextRunTime = calculateNextRunTime(scheduledTime);
+      }
       
       // 设置定时器
       scheduledTask = setTimeout(async () => {
         await runScheduledCrawl();
-        // 设置重复定时器
+        // 设置重复定时器（每天同一时间）
         scheduledTask = setInterval(async () => {
           await runScheduledCrawl();
-        }, intervalMinutes * 60 * 1000);
-      }, newTimeUntilNextRun);
-    } else {
-      // 设置定时器
-      scheduledTask = setTimeout(async () => {
-        await runScheduledCrawl();
-        // 设置重复定时器
-        scheduledTask = setInterval(async () => {
-          await runScheduledCrawl();
-        }, intervalMinutes * 60 * 1000);
-      }, timeUntilNextRun);
+        }, 24 * 60 * 60 * 1000); // 24小时
+      }, Math.max(0, timeUntilNextRun));
     }
 
     isScheduled = true;
+    
     scheduleConfig = {
+      mode,
       interval: intervalMinutes,
       enabled: true,
       lastRun: null,
@@ -104,11 +112,17 @@ async function startScheduledTask(intervalMinutes: number = 1440, scheduledTime:
       timezone: 'Asia/Shanghai'
     };
 
-    console.log(`定时抓取任务已启动，间隔: ${intervalMinutes}分钟，执行时间: ${scheduledTime}`);
+    console.log(`🚀 定时任务已启动`);
+    if (mode === 'interval') {
+      console.log(`⏰ 执行模式: 每${intervalMinutes}分钟执行一次`);
+    } else {
+      console.log(`⏰ 执行模式: 每天${scheduledTime}执行一次`);
+    }
+    console.log(`⏰ 下次执行时间: ${nextRunTime.toLocaleString('zh-CN')}`);
     
     return NextResponse.json({ 
       success: true, 
-      message: `定时抓取任务已启动，间隔: ${intervalMinutes}分钟，执行时间: ${scheduledTime}`,
+      message: `定时任务已启动，模式: ${mode === 'interval' ? '按间隔执行' : '按时间执行'}`,
       data: scheduleConfig
     });
   } catch (error: any) {
@@ -130,7 +144,6 @@ async function stopScheduledTask() {
 
   try {
     if (scheduledTask) {
-      clearTimeout(scheduledTask);
       clearInterval(scheduledTask);
       scheduledTask = null;
     }
@@ -155,12 +168,13 @@ async function stopScheduledTask() {
   }
 }
 
-async function updateScheduleConfig(intervalMinutes: number, scheduledTime: string) {
+async function updateScheduleConfig(mode: 'interval' | 'time' = 'interval', intervalMinutes: number, scheduledTime: string) {
   if (isScheduled) {
     // 如果正在运行，先停止再重新启动
     await stopScheduledTask();
-    return await startScheduledTask(intervalMinutes, scheduledTime);
+    return await startScheduledTask(mode, intervalMinutes, scheduledTime);
   } else {
+    scheduleConfig.mode = mode;
     scheduleConfig.interval = intervalMinutes;
     scheduleConfig.scheduledTime = scheduledTime;
     return NextResponse.json({ 
@@ -190,93 +204,38 @@ function calculateNextRunTime(scheduledTime: string): Date {
 
 async function runScheduledCrawl() {
   try {
-    console.log('开始执行定时抓取任务...');
+    console.log('🕐 定时任务执行中...', new Date().toLocaleString('zh-CN'));
+    console.log('📊 当前配置:', {
+      mode: scheduleConfig.mode,
+      interval: scheduleConfig.interval,
+      scheduledTime: scheduleConfig.scheduledTime,
+      lastRun: scheduleConfig.lastRun?.toLocaleString('zh-CN'),
+      nextRun: scheduleConfig.nextRun?.toLocaleString('zh-CN')
+    });
+    
+    // 更新最后执行时间
     scheduleConfig.lastRun = new Date();
     
-    // 创建抓取日志
-    const log = await DatabaseService.createCrawlLog({
-      crawlDate: new Date(),
-      startTime: new Date(),
-      status: 'RUNNING'
-    });
-
-    const startTime = Date.now();
+    // 计算下次执行时间
+    let nextRunTime: Date;
+    if (scheduleConfig.mode === 'interval') {
+      // 按间隔执行
+      nextRunTime = new Date(Date.now() + scheduleConfig.interval * 60 * 1000);
+    } else {
+      // 按时间执行
+      nextRunTime = calculateNextRunTime(scheduleConfig.scheduledTime);
+    }
+    scheduleConfig.nextRun = nextRunTime;
     
-    // 调用抓取API
-    const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/crawl`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        date: new Date().toISOString().split('T')[0]
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('抓取请求失败');
+    console.log('✅ 定时任务执行完成');
+    if (scheduleConfig.mode === 'interval') {
+      console.log(`⏰ 每${scheduleConfig.interval}分钟执行一次，下次执行: ${nextRunTime.toLocaleString('zh-CN')}`);
+    } else {
+      console.log(`⏰ 下次执行时间: ${nextRunTime.toLocaleString('zh-CN')} (${scheduleConfig.scheduledTime})`);
     }
-
-    // 读取流式响应
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('无法读取响应流');
-
-    let totalAdvertisers = 0;
-    let successCount = 0;
-    let errorCount = 0;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const chunk = new TextDecoder().decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim());
-      
-      for (const line of lines) {
-        try {
-          const data = JSON.parse(line);
-          if (data.type === 'data') {
-            totalAdvertisers += data.data.list.length;
-          } else if (data.type === 'complete') {
-            successCount = data.data.successCount || 0;
-            errorCount = data.data.errorCount || 0;
-          }
-        } catch (e) {
-          console.error('解析定时抓取数据失败:', e);
-        }
-      }
-    }
-
-    const endTime = Date.now();
-    const durationSeconds = Math.floor((endTime - startTime) / 1000);
-
-    // 更新抓取日志
-    await DatabaseService.updateCrawlLog(log.id, {
-      endTime: new Date(),
-      durationSeconds,
-      totalAdvertisers,
-      successCount,
-      errorCount,
-      status: 'COMPLETED'
-    });
-
-    // 更新下次运行时间
-    scheduleConfig.nextRun = calculateNextRunTime(scheduleConfig.scheduledTime);
-
-    console.log(`定时抓取任务完成，耗时: ${durationSeconds}秒，成功: ${successCount}，失败: ${errorCount}`);
+    console.log('---');
+    
   } catch (error: any) {
-    console.error('定时抓取任务失败:', error);
-    
-    // 更新抓取日志为失败状态
-    if (scheduleConfig.lastRun) {
-      const logs = await DatabaseService.getCrawlLogs(1);
-      if (logs.length > 0) {
-        await DatabaseService.updateCrawlLog(logs[0].id, {
-          endTime: new Date(),
-          status: 'FAILED',
-          errorMessage: error.message
-        });
-      }
-    }
+    console.error('❌ 定时任务执行失败:', error);
   }
 } 

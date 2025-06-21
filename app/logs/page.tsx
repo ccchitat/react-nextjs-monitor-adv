@@ -137,7 +137,7 @@ export default function LogsPage() {
             >
               数据监控
             </Link>
-            <Link
+            <Link 
               href="/logs"
               className="px-4 py-2 text-blue-600 hover:text-blue-800 font-medium border-b-2 border-blue-600"
             >

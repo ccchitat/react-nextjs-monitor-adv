@@ -20,7 +20,7 @@ export default function SchedulePage() {
   }>({
     isScheduled: false,
     config: {
-      interval: 1440,
+      interval: 1,
       enabled: false,
       lastRun: null,
       nextRun: null,
@@ -155,20 +155,20 @@ export default function SchedulePage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">使用说明</h2>
           <div className="space-y-3 text-sm text-gray-600">
             <div className="flex items-start gap-2">
-              <span className="text-blue-600 font-medium">•</span>
-              <span>定时抓取会在后台自动运行，即使关闭浏览器也会继续执行</span>
+              <span className="text-orange-600 font-medium">⚠️</span>
+              <span>当前为测试模式，定时任务每分钟执行一次，只打印信息不执行实际抓取</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
-              <span>每次抓取都会记录到抓取日志中，可在"抓取日志"页面查看详细记录</span>
+              <span>定时任务会在后台自动运行，即使关闭浏览器也会继续执行</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
-              <span>建议使用24小时间隔，避免过于频繁的请求影响服务器性能</span>
+              <span>每次执行都会在服务器控制台打印信息，可观察定时任务是否正常工作</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
-              <span>执行时间建议选择业务量较少的时间段，如凌晨或上午</span>
+              <span>测试完成后，建议停止定时任务或修改为正常间隔时间</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
