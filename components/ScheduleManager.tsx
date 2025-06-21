@@ -12,6 +12,18 @@ interface ScheduleConfig {
   timezone: string;
 }
 
+interface CrawlStatus {
+  isRunning: boolean;
+  currentPage?: number;
+  totalPages?: number;
+  successCount: number;
+  errorCount: number;
+  startTime?: string;
+  estimatedEndTime?: string;
+  triggerType?: 'manual' | 'scheduled';
+  snapshotDate?: string;
+}
+
 interface ScheduleManagerProps {
   onScheduleChange?: () => void;
 }
@@ -27,6 +39,11 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
     scheduledTime: '09:00', // 默认上午9点
     timezone: 'Asia/Shanghai'
   });
+  const [crawlStatus, setCrawlStatus] = useState<CrawlStatus>({
+    isRunning: false,
+    successCount: 0,
+    errorCount: 0
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,9 +56,10 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
         const result = await response.json();
         console.log('📡 服务器返回的状态:', result);
         if (result.success) {
-          console.log('✅ 设置状态:', { isScheduled: result.data.isScheduled, config: result.data.config });
+          console.log('✅ 设置状态:', { isScheduled: result.data.isScheduled, config: result.data.config, crawlStatus: result.data.crawlStatus });
           setIsScheduled(result.data.isScheduled);
           setConfig(result.data.config);
+          setCrawlStatus(result.data.crawlStatus || { isRunning: false, successCount: 0, errorCount: 0 });
         } else {
           console.error('❌ 服务器返回错误:', result.message);
         }
@@ -357,13 +375,32 @@ export default function ScheduleManager({ onScheduleChange }: ScheduleManagerPro
           </div>
         </div>
 
+        {/* 抓取状态显示 */}
+        {crawlStatus.isRunning && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <div className="flex items-center mb-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2"></div>
+              <span className="text-sm font-medium text-yellow-800">
+                抓取任务正在执行中 ({crawlStatus.triggerType === 'manual' ? '手动触发' : '定时触发'})
+              </span>
+            </div>
+            {crawlStatus.currentPage && crawlStatus.totalPages && (
+              <div className="text-sm text-yellow-700">
+                进度: 第 {crawlStatus.currentPage} 页 / 共 {crawlStatus.totalPages} 页 
+                ({Math.round((crawlStatus.currentPage / crawlStatus.totalPages) * 100)}%)
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 操作按钮 */}
         <div className="flex gap-3">
           {!isScheduled ? (
             <button
               onClick={startSchedule}
-              disabled={loading}
+              disabled={loading || crawlStatus.isRunning}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
+              title={crawlStatus.isRunning ? '抓取任务正在运行中，请等待完成后再启动定时任务' : ''}
             >
               {loading ? '启动中...' : '启动定时任务'}
             </button>

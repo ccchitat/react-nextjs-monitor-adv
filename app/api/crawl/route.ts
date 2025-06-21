@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DatabaseService, AdvertiserData } from '@/lib/database';
+import { CrawlStatusManager } from '@/lib/crawl-status';
 import fetch from 'node-fetch';
 import crypto from 'crypto';
 
@@ -177,12 +178,16 @@ function createStreamResponse(date?: string, signal?: AbortSignal) {
           }) + '\n'));
         }
         
+        // 启动状态管理
+        CrawlStatusManager.startCrawl('manual', snapshotDate.toISOString().split('T')[0]);
+        
         // 创建抓取日志
-        crawlLogId = await DatabaseService.createCrawlLog({
+        const crawlLog = await DatabaseService.createCrawlLog({
           crawlDate: snapshotDate,
           startTime: startTime,
           status: 'running'
         });
+        crawlLogId = crawlLog.id;
         
         console.log('开始抓取数据，日期:', date || '今天');
         console.log('抓取日志ID:', crawlLogId);
@@ -228,10 +233,15 @@ function createStreamResponse(date?: string, signal?: AbortSignal) {
           totalSuccessCount += saveResult.successCount;
           totalErrorCount += saveResult.errorCount;
           
+          // 更新状态
+          CrawlStatusManager.updateProgress(currentPage, totalPages, totalSuccessCount, totalErrorCount);
+          
           console.log(`第 ${currentPage} 页数据保存完成: 成功 ${saveResult.successCount} 条，失败 ${saveResult.errorCount} 条`);
         } catch (error) {
           console.error(`第 ${currentPage} 页数据保存失败:`, error);
           totalErrorCount += firstPageConverted.length;
+          // 更新状态
+          CrawlStatusManager.updateProgress(currentPage, totalPages, totalSuccessCount, totalErrorCount);
         }
         
         // 发送第一页数据
@@ -278,10 +288,15 @@ function createStreamResponse(date?: string, signal?: AbortSignal) {
               totalSuccessCount += saveResult.successCount;
               totalErrorCount += saveResult.errorCount;
               
+              // 更新状态
+              CrawlStatusManager.updateProgress(currentPage, totalPages, totalSuccessCount, totalErrorCount);
+              
               console.log(`第 ${currentPage} 页数据保存完成: 成功 ${saveResult.successCount} 条，失败 ${saveResult.errorCount} 条`);
             } catch (error) {
               console.error(`第 ${currentPage} 页数据保存失败:`, error);
               totalErrorCount += pageConverted.length;
+              // 更新状态
+              CrawlStatusManager.updateProgress(currentPage, totalPages, totalSuccessCount, totalErrorCount);
             }
             
             // 发送页面数据
@@ -333,6 +348,9 @@ function createStreamResponse(date?: string, signal?: AbortSignal) {
           });
         }
         
+        // 完成状态管理
+        CrawlStatusManager.completeCrawl(totalSuccessCount, totalErrorCount);
+        
         controller.enqueue(encoder.encode(JSON.stringify({
           type: 'complete',
           message: `抓取完成！共处理 ${totalSuccessCount + totalErrorCount} 条数据，成功 ${totalSuccessCount} 条，失败 ${totalErrorCount} 条，耗时 ${durationSeconds} 秒`
@@ -341,6 +359,9 @@ function createStreamResponse(date?: string, signal?: AbortSignal) {
         controller.close();
       } catch (error) {
         console.error('抓取过程中发生错误:', error);
+        
+        // 失败状态管理
+        CrawlStatusManager.failCrawl(error instanceof Error ? error.message : '未知错误');
         
         // 更新抓取日志为失败状态
         if (crawlLogId) {

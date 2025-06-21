@@ -7,6 +7,7 @@ import { useSession, SessionContextValue } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 interface ScheduleConfig {
+  mode: 'interval' | 'time';
   interval: number;
   enabled: boolean;
   lastRun: string | null;
@@ -15,23 +16,29 @@ interface ScheduleConfig {
   timezone: string;
 }
 
+interface CrawlStatus {
+  isRunning: boolean;
+  currentPage?: number;
+  totalPages?: number;
+  successCount: number;
+  errorCount: number;
+  startTime?: string;
+  estimatedEndTime?: string;
+  triggerType?: 'manual' | 'scheduled';
+  snapshotDate?: string;
+}
+
+interface ScheduleStatus {
+  isScheduled: boolean;
+  config: ScheduleConfig;
+  crawlStatus: CrawlStatus;
+}
+
 export default function SchedulePage() {
   const { data: session } = useSession() as SessionContextValue;
   const router = useRouter();
-  const [scheduleStatus, setScheduleStatus] = useState<{
-    isScheduled: boolean;
-    config: ScheduleConfig;
-  }>({
-    isScheduled: false,
-    config: {
-      interval: 1,
-      enabled: false,
-      lastRun: null,
-      nextRun: null,
-      scheduledTime: '09:00',
-      timezone: 'Asia/Shanghai'
-    }
-  });
+  const [scheduleStatus, setScheduleStatus] = useState<ScheduleStatus | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // 检查是否为管理员
   const isAdmin = session?.user?.isAdmin || false;
@@ -46,6 +53,7 @@ export default function SchedulePage() {
   // 加载定时任务状态
   const loadScheduleStatus = async () => {
     try {
+      setLoading(true);
       const response = await fetch('/api/schedule');
       if (response.ok) {
         const result = await response.json();
@@ -55,6 +63,8 @@ export default function SchedulePage() {
       }
     } catch (error) {
       console.error('加载定时任务状态失败:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -81,6 +91,20 @@ export default function SchedulePage() {
       return `${days}天`;
     }
   };
+
+  // 如果正在加载或没有数据，显示加载状态
+  if (loading || !scheduleStatus) {
+    return (
+      <main className="min-h-screen p-8 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">加载中...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen p-8 bg-gray-50">
@@ -127,6 +151,41 @@ export default function SchedulePage() {
         <div className="mb-6">
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">当前状态</h2>
+            
+            {/* 抓取状态显示 */}
+            {scheduleStatus.crawlStatus?.isRunning && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+                    <h3 className="text-lg font-medium text-blue-900">抓取任务正在执行中</h3>
+                  </div>
+                  <span className="text-sm text-blue-700">
+                    {scheduleStatus.crawlStatus.triggerType === 'manual' ? '手动触发' : '定时触发'}
+                  </span>
+                </div>
+                
+                {scheduleStatus.crawlStatus.currentPage && scheduleStatus.crawlStatus.totalPages && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm text-blue-700">
+                      <span>进度: 第 {scheduleStatus.crawlStatus.currentPage} 页 / 共 {scheduleStatus.crawlStatus.totalPages} 页</span>
+                      <span>{Math.round((scheduleStatus.crawlStatus.currentPage / scheduleStatus.crawlStatus.totalPages) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(scheduleStatus.crawlStatus.currentPage / scheduleStatus.crawlStatus.totalPages) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-sm text-blue-600">
+                      <span>成功: {scheduleStatus.crawlStatus.successCount} 条</span>
+                      <span>失败: {scheduleStatus.crawlStatus.errorCount} 条</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
                 <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mb-2 ${
@@ -180,7 +239,7 @@ export default function SchedulePage() {
           <div className="space-y-3 text-sm text-gray-600">
             <div className="flex items-start gap-2">
               <span className="text-orange-600 font-medium">⚠️</span>
-              <span>当前为测试模式，定时任务每分钟执行一次，只打印信息不执行实际抓取</span>
+              <span>定时任务现在会执行实际的数据抓取，请合理设置执行间隔</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
@@ -192,7 +251,7 @@ export default function SchedulePage() {
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
-              <span>测试完成后，建议停止定时任务或修改为正常间隔时间</span>
+              <span>建议设置合理的执行间隔，避免过于频繁的数据抓取</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-600 font-medium">•</span>
